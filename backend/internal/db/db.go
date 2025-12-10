@@ -154,13 +154,13 @@ func (db *DB) GetDocument(ctx context.Context, id uuid.UUID) (*models.Document, 
 	var doc models.Document
 	var owner models.User
 	err := db.pool.QueryRow(ctx, `
-		SELECT d.id, d.title, d.owner_id, d.created_at, d.updated_at,
+		SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at,
 		       u.id, u.email, u.name, COALESCE(u.avatar_url, '')
 		FROM documents d
 		JOIN users u ON d.owner_id = u.id
 		WHERE d.id = $1
 	`, id).Scan(
-		&doc.ID, &doc.Title, &doc.OwnerID, &doc.CreatedAt, &doc.UpdatedAt,
+		&doc.ID, &doc.Title, &doc.OwnerID, &doc.FolderID, &doc.CreatedAt, &doc.UpdatedAt,
 		&owner.ID, &owner.Email, &owner.Name, &owner.AvatarURL,
 	)
 	if err == pgx.ErrNoRows {
@@ -672,4 +672,215 @@ func (db *DB) ListPendingAccessRequestsForOwner(ctx context.Context, ownerID uui
 		requests = append(requests, &req)
 	}
 	return requests, nil
+}
+
+// ========== Folder Functions ==========
+
+// CreateFolder creates a new folder
+func (db *DB) CreateFolder(ctx context.Context, name string, ownerID uuid.UUID, parentID *uuid.UUID) (*models.Folder, error) {
+	var folder models.Folder
+	err := db.pool.QueryRow(ctx, `
+		INSERT INTO folders (name, owner_id, parent_id)
+		VALUES ($1, $2, $3)
+		RETURNING id, name, owner_id, parent_id, created_at, updated_at
+	`, name, ownerID, parentID).Scan(
+		&folder.ID, &folder.Name, &folder.OwnerID, &folder.ParentID, &folder.CreatedAt, &folder.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// GetFolder returns a folder by ID
+func (db *DB) GetFolder(ctx context.Context, id uuid.UUID) (*models.Folder, error) {
+	var folder models.Folder
+	err := db.pool.QueryRow(ctx, `
+		SELECT id, name, owner_id, parent_id, created_at, updated_at
+		FROM folders WHERE id = $1
+	`, id).Scan(
+		&folder.ID, &folder.Name, &folder.OwnerID, &folder.ParentID, &folder.CreatedAt, &folder.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// ListFolders returns folders for a user in a specific parent folder
+func (db *DB) ListFolders(ctx context.Context, ownerID uuid.UUID, parentID *uuid.UUID) ([]*models.Folder, error) {
+	var rows pgx.Rows
+	var err error
+
+	if parentID == nil {
+		rows, err = db.pool.Query(ctx, `
+			SELECT id, name, owner_id, parent_id, created_at, updated_at
+			FROM folders WHERE owner_id = $1 AND parent_id IS NULL
+			ORDER BY name ASC
+		`, ownerID)
+	} else {
+		rows, err = db.pool.Query(ctx, `
+			SELECT id, name, owner_id, parent_id, created_at, updated_at
+			FROM folders WHERE owner_id = $1 AND parent_id = $2
+			ORDER BY name ASC
+		`, ownerID, parentID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var folders []*models.Folder
+	for rows.Next() {
+		var folder models.Folder
+		err := rows.Scan(
+			&folder.ID, &folder.Name, &folder.OwnerID, &folder.ParentID, &folder.CreatedAt, &folder.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		folders = append(folders, &folder)
+	}
+	return folders, nil
+}
+
+// UpdateFolder updates a folder's name
+func (db *DB) UpdateFolder(ctx context.Context, id uuid.UUID, name string) (*models.Folder, error) {
+	var folder models.Folder
+	err := db.pool.QueryRow(ctx, `
+		UPDATE folders SET name = $2, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, name, owner_id, parent_id, created_at, updated_at
+	`, id, name).Scan(
+		&folder.ID, &folder.Name, &folder.OwnerID, &folder.ParentID, &folder.CreatedAt, &folder.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &folder, nil
+}
+
+// DeleteFolder deletes a folder (cascades to subfolders)
+func (db *DB) DeleteFolder(ctx context.Context, id uuid.UUID) error {
+	_, err := db.pool.Exec(ctx, `DELETE FROM folders WHERE id = $1`, id)
+	return err
+}
+
+// GetFolderPath returns the full path of folders from root to the given folder
+func (db *DB) GetFolderPath(ctx context.Context, folderID uuid.UUID) ([]*models.Folder, error) {
+	var path []*models.Folder
+	currentID := &folderID
+
+	for currentID != nil {
+		folder, err := db.GetFolder(ctx, *currentID)
+		if err != nil {
+			return nil, err
+		}
+		if folder == nil {
+			break
+		}
+		// Prepend to path (so root is first)
+		path = append([]*models.Folder{folder}, path...)
+		currentID = folder.ParentID
+	}
+
+	return path, nil
+}
+
+// GetFolderContents returns folders and documents in a folder
+func (db *DB) GetFolderContents(ctx context.Context, ownerID uuid.UUID, folderID *uuid.UUID) (*models.FolderContents, error) {
+	contents := &models.FolderContents{}
+
+	// Get current folder info if not root
+	if folderID != nil {
+		folder, err := db.GetFolder(ctx, *folderID)
+		if err != nil {
+			return nil, err
+		}
+		contents.Folder = folder
+	}
+
+	// Get subfolders
+	folders, err := db.ListFolders(ctx, ownerID, folderID)
+	if err != nil {
+		return nil, err
+	}
+	contents.Folders = folders
+	if contents.Folders == nil {
+		contents.Folders = []*models.Folder{}
+	}
+
+	// Get documents in this folder (with owner info)
+	var rows pgx.Rows
+	if folderID == nil {
+		rows, err = db.pool.Query(ctx, `
+			SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at,
+			       u.id, u.email, u.name, COALESCE(u.avatar_url, ''),
+			       COALESCE(dp.role, 'view') as permission
+			FROM documents d
+			JOIN users u ON d.owner_id = u.id
+			JOIN document_permissions dp ON d.id = dp.doc_id AND dp.user_id = $1
+			WHERE d.folder_id IS NULL
+			ORDER BY d.updated_at DESC
+		`, ownerID)
+	} else {
+		rows, err = db.pool.Query(ctx, `
+			SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at,
+			       u.id, u.email, u.name, COALESCE(u.avatar_url, ''),
+			       COALESCE(dp.role, 'view') as permission
+			FROM documents d
+			JOIN users u ON d.owner_id = u.id
+			JOIN document_permissions dp ON d.id = dp.doc_id AND dp.user_id = $1
+			WHERE d.folder_id = $2
+			ORDER BY d.updated_at DESC
+		`, ownerID, folderID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var doc models.Document
+		var owner models.User
+		err := rows.Scan(
+			&doc.ID, &doc.Title, &doc.OwnerID, &doc.FolderID, &doc.CreatedAt, &doc.UpdatedAt,
+			&owner.ID, &owner.Email, &owner.Name, &owner.AvatarURL,
+			&doc.Permission,
+		)
+		if err != nil {
+			return nil, err
+		}
+		doc.Owner = &owner
+		contents.Documents = append(contents.Documents, &doc)
+	}
+	if contents.Documents == nil {
+		contents.Documents = []*models.Document{}
+	}
+
+	return contents, nil
+}
+
+// MoveDocument moves a document to a folder (nil = root)
+func (db *DB) MoveDocument(ctx context.Context, docID uuid.UUID, folderID *uuid.UUID) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE documents SET folder_id = $2, updated_at = NOW()
+		WHERE id = $1
+	`, docID, folderID)
+	return err
+}
+
+// MoveFolder moves a folder to a new parent (nil = root)
+func (db *DB) MoveFolder(ctx context.Context, folderID uuid.UUID, parentID *uuid.UUID) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE folders SET parent_id = $2, updated_at = NOW()
+		WHERE id = $1
+	`, folderID, parentID)
+	return err
 }

@@ -69,6 +69,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		// Access requests
 		docs.POST("/:id/access-request", h.RequestAccess) // No permission required - user is requesting access
 		docs.GET("/:id/access-requests", auth.RequirePermission(h.db, models.RoleOwner), h.ListAccessRequests)
+
+		// Move document
+		docs.PUT("/:id/move", auth.RequirePermission(h.db, models.RoleOwner), h.MoveDocument)
 	}
 
 	// Comment routes (for update/delete)
@@ -93,6 +96,19 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	{
 		accessReqs.GET("/pending", h.ListMyPendingAccessRequests)
 		accessReqs.PUT("/:id", h.UpdateAccessRequest)
+	}
+
+	// Folder routes
+	folders := r.Group("/api/folders")
+	folders.Use(auth.AuthMiddleware(h.db))
+	{
+		folders.POST("", h.CreateFolder)
+		folders.GET("", h.GetFolderContents) // Query param: folder_id (optional)
+		folders.GET("/:id", h.GetFolderByID)
+		folders.GET("/:id/path", h.GetFolderPath) // Get full parent chain
+		folders.PUT("/:id", h.UpdateFolder)
+		folders.DELETE("/:id", h.DeleteFolder)
+		folders.PUT("/:id/move", h.MoveFolder)
 	}
 }
 
@@ -791,4 +807,252 @@ func (h *Handler) ListMyPendingAccessRequests(c *gin.Context) {
 		requests = []*models.AccessRequest{}
 	}
 	c.JSON(http.StatusOK, requests)
+}
+
+// ========== Folder Handlers ==========
+
+// CreateFolder creates a new folder
+func (h *Handler) CreateFolder(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	var req models.CreateFolderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	folder, err := h.db.CreateFolder(c.Request.Context(), req.Name, user.ID, req.ParentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create folder"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, folder)
+}
+
+// GetFolderContents returns folders and documents in a folder (or root)
+func (h *Handler) GetFolderContents(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	var folderID *uuid.UUID
+	if folderIDStr := c.Query("folder_id"); folderIDStr != "" {
+		id, err := uuid.Parse(folderIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+			return
+		}
+		folderID = &id
+	}
+
+	contents, err := h.db.GetFolderContents(c.Request.Context(), user.ID, folderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get folder contents"})
+		return
+	}
+
+	c.JSON(http.StatusOK, contents)
+}
+
+// GetFolderByID returns a folder by its ID
+func (h *Handler) GetFolderByID(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	folderID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+		return
+	}
+
+	folder, err := h.db.GetFolder(c.Request.Context(), folderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get folder"})
+		return
+	}
+	if folder == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Folder not found"})
+		return
+	}
+
+	// Check ownership
+	if folder.OwnerID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
+		return
+	}
+
+	c.JSON(http.StatusOK, folder)
+}
+
+// GetFolderPath returns the full path from root to the folder
+func (h *Handler) GetFolderPath(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	folderID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+		return
+	}
+
+	path, err := h.db.GetFolderPath(c.Request.Context(), folderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get folder path"})
+		return
+	}
+
+	// Verify user owns (or has access to) the folders
+	if len(path) > 0 && path[0].OwnerID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
+		return
+	}
+
+	c.JSON(http.StatusOK, path)
+}
+
+// UpdateFolder updates a folder's name
+func (h *Handler) UpdateFolder(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	folderID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+		return
+	}
+
+	// Check ownership
+	folder, err := h.db.GetFolder(c.Request.Context(), folderID)
+	if err != nil || folder == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Folder not found"})
+		return
+	}
+	if folder.OwnerID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
+		return
+	}
+
+	var req models.UpdateFolderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updated, err := h.db.UpdateFolder(c.Request.Context(), folderID, req.Name)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update folder"})
+		return
+	}
+
+	c.JSON(http.StatusOK, updated)
+}
+
+// DeleteFolder deletes a folder
+func (h *Handler) DeleteFolder(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	folderID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+		return
+	}
+
+	// Check ownership
+	folder, err := h.db.GetFolder(c.Request.Context(), folderID)
+	if err != nil || folder == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Folder not found"})
+		return
+	}
+	if folder.OwnerID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
+		return
+	}
+
+	if err := h.db.DeleteFolder(c.Request.Context(), folderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete folder"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Folder deleted"})
+}
+
+// MoveFolder moves a folder to a new parent
+func (h *Handler) MoveFolder(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	folderID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folder ID"})
+		return
+	}
+
+	// Check ownership
+	folder, err := h.db.GetFolder(c.Request.Context(), folderID)
+	if err != nil || folder == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Folder not found"})
+		return
+	}
+	if folder.OwnerID != user.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Not authorized"})
+		return
+	}
+
+	var req models.MoveItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.db.MoveFolder(c.Request.Context(), folderID, req.FolderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move folder"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Folder moved"})
+}
+
+// MoveDocument moves a document to a folder
+func (h *Handler) MoveDocument(c *gin.Context) {
+	docID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document ID"})
+		return
+	}
+
+	var req models.MoveItemRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.db.MoveDocument(c.Request.Context(), docID, req.FolderID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move document"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Document moved"})
 }

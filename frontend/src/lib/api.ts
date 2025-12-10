@@ -1,4 +1,4 @@
-import type { User, Document, Comment, DocumentPermission, LoginResponse, AccessRequest } from '@/types'
+import type { User, Document, Comment, DocumentPermission, LoginResponse, AccessRequest, Folder, FolderContents } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
@@ -228,6 +228,51 @@ class ApiClient {
         return this.fetch<AccessRequest>(`/api/access-requests/${requestId}`, {
             method: 'PUT',
             body: JSON.stringify({ status }),
+        })
+    }
+
+    // ========== Folder Methods ==========
+
+    async getFolderContents(folderId?: string): Promise<FolderContents> {
+        const query = folderId ? `?folder_id=${folderId}` : ''
+        return this.fetch<FolderContents>(`/api/folders${query}`)
+    }
+
+    async getFolderPath(folderId: string): Promise<Folder[]> {
+        return this.fetch<Folder[]>(`/api/folders/${folderId}/path`)
+    }
+
+    async createFolder(name: string, parentId?: string): Promise<Folder> {
+        return this.fetch<Folder>('/api/folders', {
+            method: 'POST',
+            body: JSON.stringify({ name, parent_id: parentId }),
+        })
+    }
+
+    async updateFolder(folderId: string, name: string): Promise<Folder> {
+        return this.fetch<Folder>(`/api/folders/${folderId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name }),
+        })
+    }
+
+    async deleteFolder(folderId: string): Promise<void> {
+        await this.fetch(`/api/folders/${folderId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    async moveDocument(docId: string, folderId?: string): Promise<void> {
+        await this.fetch(`/api/docs/${docId}/move`, {
+            method: 'PUT',
+            body: JSON.stringify({ folder_id: folderId || null }),
+        })
+    }
+
+    async moveFolder(folderId: string, parentId?: string): Promise<void> {
+        await this.fetch(`/api/folders/${folderId}/move`, {
+            method: 'PUT',
+            body: JSON.stringify({ folder_id: parentId || null }),
         })
     }
 }

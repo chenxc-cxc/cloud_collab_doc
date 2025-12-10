@@ -13,6 +13,7 @@ export interface Document {
     id: string
     title: string
     owner_id: string
+    folder_id?: string
     owner?: User
     permission?: string
     created_at: string
@@ -102,4 +103,20 @@ export interface AccessRequest {
     message?: string
     created_at: string
     updated_at: string
+}
+
+// Folder types
+export interface Folder {
+    id: string
+    name: string
+    owner_id: string
+    parent_id?: string
+    created_at: string
+    updated_at: string
+}
+
+export interface FolderContents {
+    folder?: Folder
+    folders: Folder[]
+    documents: Document[]
 }

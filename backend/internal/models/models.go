@@ -19,11 +19,12 @@ type User struct {
 
 // Document represents a collaborative document
 type Document struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Title     string    `json:"title" db:"title"`
-	OwnerID   uuid.UUID `json:"owner_id" db:"owner_id"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID        uuid.UUID  `json:"id" db:"id"`
+	Title     string     `json:"title" db:"title"`
+	OwnerID   uuid.UUID  `json:"owner_id" db:"owner_id"`
+	FolderID  *uuid.UUID `json:"folder_id,omitempty" db:"folder_id"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
 
 	// Joined fields
 	Owner      *User  `json:"owner,omitempty"`
@@ -225,4 +226,37 @@ type CreateAccessRequestRequest struct {
 // UpdateAccessRequestRequest represents a request to update an access request status
 type UpdateAccessRequestRequest struct {
 	Status string `json:"status" binding:"required,oneof=approved rejected"`
+}
+
+// Folder represents a folder for organizing documents
+type Folder struct {
+	ID        uuid.UUID  `json:"id" db:"id"`
+	Name      string     `json:"name" db:"name"`
+	OwnerID   uuid.UUID  `json:"owner_id" db:"owner_id"`
+	ParentID  *uuid.UUID `json:"parent_id,omitempty" db:"parent_id"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// CreateFolderRequest represents a request to create a folder
+type CreateFolderRequest struct {
+	Name     string     `json:"name" binding:"required"`
+	ParentID *uuid.UUID `json:"parent_id,omitempty"`
+}
+
+// UpdateFolderRequest represents a request to update a folder
+type UpdateFolderRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+// MoveItemRequest represents a request to move a document or folder
+type MoveItemRequest struct {
+	FolderID *uuid.UUID `json:"folder_id"` // NULL = move to root
+}
+
+// FolderContents represents the contents of a folder
+type FolderContents struct {
+	Folder    *Folder     `json:"folder,omitempty"` // nil for root
+	Folders   []*Folder   `json:"folders"`
+	Documents []*Document `json:"documents"`
 }

@@ -18,6 +18,14 @@ export default function DocumentPage() {
     const router = useRouter()
     const docId = params.id as string
 
+    // Compute back URL based on document's folder
+    const getBackUrl = () => {
+        if (document?.folder_id) {
+            return `/?folder=${document.folder_id}`
+        }
+        return '/'
+    }
+
     const { currentUser, setCurrentUser } = useStore()
     const [document, setDocument] = useState<Document | null>(null)
     const [comments, setComments] = useState<Comment[]>([])
@@ -185,7 +193,7 @@ export default function DocumentPage() {
                         {/* Left side */}
                         <div className="flex items-center gap-4">
                             <button
-                                onClick={() => router.push('/')}
+                                onClick={() => router.push(getBackUrl())}
                                 className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
                             >
                                 <ArrowLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />

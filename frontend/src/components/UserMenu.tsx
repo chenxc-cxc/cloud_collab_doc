@@ -41,12 +41,12 @@ export function UserMenu({ onChangePassword }: UserMenuProps) {
         <div className="relative" ref={menuRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 transition-colors"
             >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white font-medium text-sm">
                     {currentUser.name?.charAt(0).toUpperCase() || 'U'}
                 </div>
-                <span className="text-slate-200 text-sm font-medium hidden sm:block">
+                <span className="text-slate-700 dark:text-slate-200 text-sm font-medium hidden sm:block">
                     {currentUser.name}
                 </span>
                 <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
