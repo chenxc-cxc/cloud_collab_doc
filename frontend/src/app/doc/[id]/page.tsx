@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Users, Share2, MessageSquare, History, Settings } from 'lucide-react'
+import { ArrowLeft, Users, Share2, MessageSquare, History, Settings, Lock, FileQuestion, Send, Check, Loader2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useCollaboration } from '@/hooks/useCollaboration'
@@ -22,10 +22,12 @@ export default function DocumentPage() {
     const [document, setDocument] = useState<Document | null>(null)
     const [comments, setComments] = useState<Comment[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
     const [showComments, setShowComments] = useState(false)
     const [showShare, setShowShare] = useState(false)
 
     const [permission, setPermission] = useState<string>('view')
+    const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
 
     const {
         editor,
@@ -33,6 +35,8 @@ export default function DocumentPage() {
         isConnected,
         collaborators,
     } = useCollaboration(docId, currentUser, permission)
+
+    const [originalTitle, setOriginalTitle] = useState<string>('')
 
     useEffect(() => {
         loadDocument()
@@ -48,25 +52,33 @@ export default function DocumentPage() {
             ])
             setCurrentUser(user)
             setDocument(doc)
+            setOriginalTitle(doc.title) // Track original title from server
             setComments(docComments)
             setPermission(perm)
-        } catch (error) {
-            console.error('Failed to load document:', error)
+        } catch (err) {
+            console.error('Failed to load document:', err)
+            if (err instanceof Error) {
+                setError(err.message)
+            } else {
+                setError('Failed to load document')
+            }
         } finally {
             setLoading(false)
         }
     }
 
     const updateTitle = useCallback(async (newTitle: string) => {
-        if (!document || document.title === newTitle) return
+        if (!document || originalTitle === newTitle) return
 
         try {
             await api.updateDocument(docId, { title: newTitle })
-            setDocument(prev => prev ? { ...prev, title: newTitle } : null)
+            setOriginalTitle(newTitle) // Update original title after successful save
         } catch (error) {
             console.error('Failed to update title:', error)
+            // Revert to original title on error
+            setDocument(prev => prev ? { ...prev, title: originalTitle } : null)
         }
-    }, [docId, document])
+    }, [docId, document, originalTitle])
 
     const addComment = async (content: string, selection?: { anchor: number; head: number }) => {
         try {
@@ -85,18 +97,79 @@ export default function DocumentPage() {
         )
     }
 
-    if (!document) {
+    if (error || !document) {
+        const isAccessDenied = error?.includes('No access') || error?.includes('Forbidden') || error?.includes('access')
+
+        const handleRequestAccess = async () => {
+            setRequestStatus('loading')
+            try {
+                await api.requestAccess(docId)
+                setRequestStatus('sent')
+            } catch (err) {
+                console.error('Failed to request access:', err)
+                setRequestStatus('error')
+            }
+        }
+
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
-                    Document not found
-                </h1>
-                <button
-                    onClick={() => router.push('/')}
-                    className="text-primary-500 hover:text-primary-600"
-                >
-                    Go back home
-                </button>
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
+                <div className="text-center p-8">
+                    {isAccessDenied ? (
+                        <>
+                            <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-100 dark:bg-orange-900/30 rounded-full mb-6">
+                                <Lock className="w-10 h-10 text-orange-500" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
+                                No Permission
+                            </h1>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-md">
+                                You don't have access to this document.
+                            </p>
+
+                            {requestStatus === 'sent' ? (
+                                <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-6">
+                                    <Check className="w-5 h-5" />
+                                    <span>Request sent! The document owner will review your request.</span>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleRequestAccess}
+                                    disabled={requestStatus === 'loading'}
+                                    className="flex items-center justify-center gap-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-400 text-white rounded-lg font-medium transition-colors mb-4"
+                                >
+                                    {requestStatus === 'loading' ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <Send className="w-5 h-5" />
+                                    )}
+                                    Request Access
+                                </button>
+                            )}
+
+                            {requestStatus === 'error' && (
+                                <p className="text-red-500 mb-4">Failed to send request. You may have already requested access.</p>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <div className="inline-flex items-center justify-center w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full mb-6">
+                                <FileQuestion className="w-10 h-10 text-slate-400" />
+                            </div>
+                            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
+                                Document Not Found
+                            </h1>
+                            <p className="text-slate-600 dark:text-slate-400 mb-6">
+                                This document doesn't exist or has been deleted.
+                            </p>
+                        </>
+                    )}
+                    <button
+                        onClick={() => router.push('/')}
+                        className="px-6 py-3 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium transition-colors"
+                    >
+                        Go to My Documents
+                    </button>
+                </div>
             </div>
         )
     }

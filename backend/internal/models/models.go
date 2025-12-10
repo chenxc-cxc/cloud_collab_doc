@@ -8,12 +8,13 @@ import (
 
 // User represents a user in the system
 type User struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	Email     string    `json:"email" db:"email"`
-	Name      string    `json:"name" db:"name"`
-	AvatarURL string    `json:"avatar_url,omitempty" db:"avatar_url"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID           uuid.UUID `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	PasswordHash string    `json:"-" db:"password_hash"` // Never expose in JSON
+	Name         string    `json:"name" db:"name"`
+	AvatarURL    string    `json:"avatar_url,omitempty" db:"avatar_url"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Document represents a collaborative document
@@ -153,3 +154,75 @@ const (
 	MsgTypeConnected  = "connected"
 	MsgTypeDisconnect = "disconnect"
 )
+
+// Auth request/response types
+
+// RegisterRequest represents a user registration request
+type RegisterRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Name     string `json:"name" binding:"required"`
+	Password string `json:"password" binding:"required,min=6"`
+}
+
+// LoginRequest represents a user login request
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+}
+
+// LoginResponse represents a login response
+type LoginResponse struct {
+	Token string `json:"token"`
+	User  *User  `json:"user"`
+}
+
+// ChangePasswordRequest represents a password change request
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
+// ForgotPasswordRequest represents a forgot password request
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ResetPasswordRequest represents a password reset request
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
+// Access request status constants
+const (
+	AccessRequestPending  = "pending"
+	AccessRequestApproved = "approved"
+	AccessRequestRejected = "rejected"
+)
+
+// AccessRequest represents a request for document access
+type AccessRequest struct {
+	ID            uuid.UUID `json:"id" db:"id"`
+	DocID         uuid.UUID `json:"doc_id" db:"doc_id"`
+	RequesterID   uuid.UUID `json:"requester_id" db:"requester_id"`
+	Status        string    `json:"status" db:"status"`
+	RequestedRole string    `json:"requested_role" db:"requested_role"`
+	Message       string    `json:"message,omitempty" db:"message"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+
+	// Joined fields
+	Requester *User     `json:"requester,omitempty"`
+	Document  *Document `json:"document,omitempty"`
+}
+
+// CreateAccessRequestRequest represents a request to create an access request
+type CreateAccessRequestRequest struct {
+	RequestedRole string `json:"requested_role,omitempty"` // defaults to 'view'
+	Message       string `json:"message,omitempty"`
+}
+
+// UpdateAccessRequestRequest represents a request to update an access request status
+type UpdateAccessRequestRequest struct {
+	Status string `json:"status" binding:"required,oneof=approved rejected"`
+}

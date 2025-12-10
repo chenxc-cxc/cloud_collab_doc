@@ -26,13 +26,24 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	// Health check
 	r.GET("/health", h.HealthCheck)
 
-	// Auth routes (for local dev)
-	r.POST("/api/auth/login", h.DevLogin)
-	r.GET("/api/auth/me", auth.DevAuthMiddleware(h.db), h.GetCurrentUser)
+	// Public auth routes (no auth required)
+	r.POST("/api/auth/register", h.Register)
+	r.POST("/api/auth/login", h.Login)
+	r.POST("/api/auth/forgot-password", h.ForgotPassword)
+	r.POST("/api/auth/reset-password", h.ResetPassword)
+
+	// Protected auth routes
+	authRoutes := r.Group("/api/auth")
+	authRoutes.Use(auth.AuthMiddleware(h.db))
+	{
+		authRoutes.GET("/me", h.GetCurrentUser)
+		authRoutes.POST("/logout", h.Logout)
+		authRoutes.PUT("/password", h.ChangePassword)
+	}
 
 	// Document routes
 	docs := r.Group("/api/docs")
-	docs.Use(auth.DevAuthMiddleware(h.db))
+	docs.Use(auth.AuthMiddleware(h.db))
 	{
 		docs.GET("", h.ListDocuments)
 		docs.POST("", h.CreateDocument)
@@ -54,11 +65,15 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 
 		// My permission (accessible to anyone with view access)
 		docs.GET("/:id/my-permission", auth.RequirePermission(h.db, models.RoleView), h.GetMyPermission)
+
+		// Access requests
+		docs.POST("/:id/access-request", h.RequestAccess) // No permission required - user is requesting access
+		docs.GET("/:id/access-requests", auth.RequirePermission(h.db, models.RoleOwner), h.ListAccessRequests)
 	}
 
 	// Comment routes (for update/delete)
 	comments := r.Group("/api/comments")
-	comments.Use(auth.DevAuthMiddleware(h.db))
+	comments.Use(auth.AuthMiddleware(h.db))
 	{
 		comments.PUT("/:id", h.UpdateComment)
 		comments.DELETE("/:id", h.DeleteComment)
@@ -71,6 +86,14 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		yjs.GET("/:docId/snapshot", h.GetYjsSnapshot)
 		yjs.POST("/:docId/snapshot", h.SaveYjsSnapshot)
 	}
+
+	// Access request routes (for update)
+	accessReqs := r.Group("/api/access-requests")
+	accessReqs.Use(auth.AuthMiddleware(h.db))
+	{
+		accessReqs.GET("/pending", h.ListMyPendingAccessRequests)
+		accessReqs.PUT("/:id", h.UpdateAccessRequest)
+	}
 }
 
 // HealthCheck returns the health status
@@ -78,11 +101,55 @@ func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// DevLogin handles login for local development
-func (h *Handler) DevLogin(c *gin.Context) {
-	var req struct {
-		Email string `json:"email" binding:"required"`
+// Register handles user registration
+func (h *Handler) Register(c *gin.Context) {
+	var req models.RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
+
+	// Check if user already exists
+	existingUser, err := h.db.GetUserByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if existingUser != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+		return
+	}
+
+	// Hash password
+	passwordHash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	// Create user
+	user, err := h.db.CreateUserWithPassword(c.Request.Context(), req.Email, req.Name, passwordHash)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
+	// Generate token
+	token, err := auth.GenerateToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.LoginResponse{
+		Token: token,
+		User:  user,
+	})
+}
+
+// Login handles user login with email and password
+func (h *Handler) Login(c *gin.Context) {
+	var req models.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -95,7 +162,13 @@ func (h *Handler) DevLogin(c *gin.Context) {
 	}
 
 	if user == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+		return
+	}
+
+	// Check password
+	if !auth.CheckPassword(req.Password, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
@@ -105,10 +178,102 @@ func (h *Handler) DevLogin(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"token": token,
-		"user":  user,
+	c.JSON(http.StatusOK, models.LoginResponse{
+		Token: token,
+		User:  user,
 	})
+}
+
+// Logout handles user logout
+func (h *Handler) Logout(c *gin.Context) {
+	// JWT tokens are stateless, so we just return success
+	// In a production system, you might want to add the token to a blacklist in Redis
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+// ChangePassword handles password change for authenticated users
+func (h *Handler) ChangePassword(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	var req models.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Verify old password
+	if !auth.CheckPassword(req.OldPassword, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
+		return
+	}
+
+	// Hash new password
+	newPasswordHash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	// Update password
+	if err := h.db.UpdateUserPassword(c.Request.Context(), user.ID, newPasswordHash); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
+// ForgotPassword handles forgot password request
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req models.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if user exists
+	user, err := h.db.GetUserByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// Always return success to prevent email enumeration
+	if user == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a reset link will be sent"})
+		return
+	}
+
+	// Generate reset token
+	resetToken, err := auth.GenerateResetToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate reset token"})
+		return
+	}
+
+	// TODO: Store reset token in Redis with expiration
+	// TODO: Send email with reset link
+	// For now, just log it (development only)
+	_ = resetToken // In production, send this via email
+
+	c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a reset link will be sent"})
+}
+
+// ResetPassword handles password reset with token
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req models.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// TODO: Validate reset token from Redis and get associated user email
+	// For now, this is a placeholder that returns an error
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "Password reset via email is not configured. Please contact an administrator."})
 }
 
 // GetCurrentUser returns the current authenticated user
@@ -479,4 +644,151 @@ func (h *Handler) SaveYjsSnapshot(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Snapshot saved"})
+}
+
+// RequestAccess handles access request from users without permission
+func (h *Handler) RequestAccess(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	docIDStr := c.Param("id")
+	docID, err := uuid.Parse(docIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid document ID"})
+		return
+	}
+
+	// Check if document exists
+	doc, err := h.db.GetDocument(c.Request.Context(), docID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if doc == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
+		return
+	}
+
+	// Check if user already has access
+	perm, err := h.db.GetPermission(c.Request.Context(), docID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if perm != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "You already have access to this document"})
+		return
+	}
+
+	var req models.CreateAccessRequestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Allow empty body - defaults will be used
+		req = models.CreateAccessRequestRequest{}
+	}
+
+	accessReq, err := h.db.CreateAccessRequest(c.Request.Context(), docID, user.ID, req.RequestedRole, req.Message)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create access request"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, accessReq)
+}
+
+// ListAccessRequests returns all access requests for a document (owner only)
+func (h *Handler) ListAccessRequests(c *gin.Context) {
+	docIDStr := c.Param("id")
+	docID, _ := uuid.Parse(docIDStr)
+
+	requests, err := h.db.ListAccessRequestsByDoc(c.Request.Context(), docID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list access requests"})
+		return
+	}
+	if requests == nil {
+		requests = []*models.AccessRequest{}
+	}
+	c.JSON(http.StatusOK, requests)
+}
+
+// UpdateAccessRequest updates an access request status (approve/reject)
+func (h *Handler) UpdateAccessRequest(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	reqIDStr := c.Param("id")
+	reqID, err := uuid.Parse(reqIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request ID"})
+		return
+	}
+
+	// Get the access request
+	accessReq, err := h.db.GetAccessRequest(c.Request.Context(), reqID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if accessReq == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Access request not found"})
+		return
+	}
+
+	// Check if user is the document owner
+	perm, err := h.db.GetPermission(c.Request.Context(), accessReq.DocID, user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if perm == nil || perm.Role != models.RoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only document owner can manage access requests"})
+		return
+	}
+
+	var req models.UpdateAccessRequestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Update the request status
+	updated, err := h.db.UpdateAccessRequestStatus(c.Request.Context(), reqID, req.Status)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update access request"})
+		return
+	}
+
+	// If approved, grant permission
+	if req.Status == models.AccessRequestApproved {
+		role := accessReq.RequestedRole
+		if role == "" {
+			role = models.RoleView
+		}
+		if err := h.db.SetPermission(c.Request.Context(), accessReq.DocID, accessReq.RequesterID, role); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to grant permission"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, updated)
+}
+
+// ListMyPendingAccessRequests returns all pending access requests for documents owned by the current user
+func (h *Handler) ListMyPendingAccessRequests(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	requests, err := h.db.ListPendingAccessRequestsForOwner(c.Request.Context(), user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list access requests"})
+		return
+	}
+	if requests == nil {
+		requests = []*models.AccessRequest{}
+	}
+	c.JSON(http.StatusOK, requests)
 }

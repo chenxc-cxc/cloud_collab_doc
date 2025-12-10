@@ -87,3 +87,19 @@ export interface LoginResponse {
 export interface ApiError {
     error: string
 }
+
+// Access request types
+export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AccessRequest {
+    id: string
+    doc_id: string
+    requester_id: string
+    requester?: User
+    document?: Document  // Document info for display in notifications
+    status: AccessRequestStatus
+    requested_role: string
+    message?: string
+    created_at: string
+    updated_at: string
+}

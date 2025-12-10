@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { FileText, Plus, Users, Clock, ChevronRight, Trash2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
+import { AuthGuard } from '@/components/AuthGuard'
+import { UserMenu } from '@/components/UserMenu'
+import NotificationBell from '@/components/NotificationBell'
 import type { Document } from '@/types'
 
 export default function HomePage() {
@@ -77,132 +80,110 @@ export default function HomePage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
-            </div>
+            <AuthGuard>
+                <div className="flex items-center justify-center min-h-screen">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+                </div>
+            </AuthGuard>
         )
     }
 
     return (
-        <div className="max-w-6xl mx-auto px-4 py-8">
-            {/* Header */}
-            <header className="flex items-center justify-between mb-8">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-                        Collaborative Docs
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Welcome back, {currentUser?.name || 'User'}
-                    </p>
-                </div>
-
-                <button
-                    onClick={createDocument}
-                    disabled={creating}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-                >
-                    <Plus className="w-5 h-5" />
-                    {creating ? 'Creating...' : 'New Document'}
-                </button>
-            </header>
-
-            {/* Document List */}
-            <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300">
-                    Your Documents
-                </h2>
-
-                {documents.length === 0 ? (
-                    <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                        <FileText className="w-16 h-16 mx-auto text-slate-300 dark:text-slate-600 mb-4" />
-                        <h3 className="text-lg font-medium text-slate-600 dark:text-slate-400">
-                            No documents yet
-                        </h3>
-                        <p className="text-slate-500 dark:text-slate-500 mt-1">
-                            Create your first document to get started
+        <AuthGuard>
+            <div className="max-w-6xl mx-auto px-4 py-8">
+                {/* Header */}
+                <header className="flex items-center justify-between mb-8">
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                            Collaborative Docs
+                        </h1>
+                        <p className="text-slate-500 dark:text-slate-400 mt-1">
+                            Welcome back, {currentUser?.name || 'User'}
                         </p>
                     </div>
-                ) : (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {documents.map((doc) => (
-                            <div
-                                key={doc.id}
-                                onClick={() => router.push(`/doc/${doc.id}`)}
-                                className="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-lg transition-all animate-fade-in"
-                            >
-                                <div className="flex items-start justify-between mb-3">
-                                    <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
-                                        <FileText className="w-6 h-6 text-primary-500" />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(doc.permission || 'view')}`}>
-                                            {doc.permission}
-                                        </span>
-                                        {doc.permission === 'owner' && (
-                                            <button
-                                                onClick={(e) => deleteDocument(e, doc.id)}
-                                                className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
 
-                                <h3 className="font-semibold text-slate-900 dark:text-white mb-2 truncate">
-                                    {doc.title}
-                                </h3>
-
-                                <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-                                    <div className="flex items-center gap-1">
-                                        <Users className="w-4 h-4" />
-                                        <span>{doc.owner?.name || 'Unknown'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <Clock className="w-4 h-4" />
-                                        <span>{formatDate(doc.updated_at)}</span>
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 flex items-center text-primary-500 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                                    Open document
-                                    <ChevronRight className="w-4 h-4 ml-1" />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Test Users Section */}
-            <div className="mt-12 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
-                <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-4">
-                    Test Users (Development)
-                </h3>
-                <div className="flex flex-wrap gap-3">
-                    {['alice@example.com', 'bob@example.com', 'charlie@example.com'].map((email) => (
+                    <div className="flex items-center gap-3">
                         <button
-                            key={email}
-                            onClick={async () => {
-                                try {
-                                    const { token, user } = await api.login(email)
-                                    localStorage.setItem('token', token)
-                                    setCurrentUser(user)
-                                    loadData()
-                                } catch (error) {
-                                    console.error('Login failed:', error)
-                                }
-                            }}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${currentUser?.email === email
-                                    ? 'bg-primary-500 text-white'
-                                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
-                                }`}
+                            onClick={createDocument}
+                            disabled={creating}
+                            className="flex items-center gap-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                         >
-                            {email.split('@')[0]}
+                            <Plus className="w-5 h-5" />
+                            {creating ? 'Creating...' : 'New Document'}
                         </button>
-                    ))}
+                        <NotificationBell />
+                        <UserMenu />
+                    </div>
+                </header>
+
+                {/* Document List */}
+                <div className="space-y-4">
+                    <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+                        Your Documents
+                    </h2>
+
+                    {documents.length === 0 ? (
+                        <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <FileText className="w-16 h-16 mx-auto text-slate-300 dark:text-slate-600 mb-4" />
+                            <h3 className="text-lg font-medium text-slate-600 dark:text-slate-400">
+                                No documents yet
+                            </h3>
+                            <p className="text-slate-500 dark:text-slate-500 mt-1">
+                                Create your first document to get started
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            {documents.map((doc) => (
+                                <div
+                                    key={doc.id}
+                                    onClick={() => router.push(`/doc/${doc.id}`)}
+                                    className="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 cursor-pointer hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-lg transition-all animate-fade-in"
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="p-2 bg-primary-50 dark:bg-primary-900/30 rounded-lg">
+                                            <FileText className="w-6 h-6 text-primary-500" />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(doc.permission || 'view')}`}>
+                                                {doc.permission}
+                                            </span>
+                                            {doc.permission === 'owner' && (
+                                                <button
+                                                    onClick={(e) => deleteDocument(e, doc.id)}
+                                                    className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <h3 className="font-semibold text-slate-900 dark:text-white mb-2 truncate">
+                                        {doc.title}
+                                    </h3>
+
+                                    <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+                                        <div className="flex items-center gap-1">
+                                            <Users className="w-4 h-4" />
+                                            <span>{doc.owner?.name || 'Unknown'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-4 h-4" />
+                                            <span>{formatDate(doc.updated_at)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 flex items-center text-primary-500 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Open document
+                                        <ChevronRight className="w-4 h-4 ml-1" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
-        </div>
+        </AuthGuard>
     )
 }

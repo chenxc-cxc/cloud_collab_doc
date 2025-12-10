@@ -8,6 +8,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
     name TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -88,10 +89,12 @@ CREATE TRIGGER update_comments_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert test users for local development
-INSERT INTO users (id, email, name) VALUES 
-    ('11111111-1111-1111-1111-111111111111', 'alice@example.com', 'Alice'),
-    ('22222222-2222-2222-2222-222222222222', 'bob@example.com', 'Bob'),
-    ('33333333-3333-3333-3333-333333333333', 'charlie@example.com', 'Charlie')
+-- Password for all test users is: password123
+-- bcrypt hash generated with cost 10
+INSERT INTO users (id, email, password_hash, name) VALUES 
+    ('11111111-1111-1111-1111-111111111111', 'alice@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqNqhIQYGLBj.3hKlxDGNqNqhIQYGLB', 'Alice'),
+    ('22222222-2222-2222-2222-222222222222', 'bob@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqNqhIQYGLBj.3hKlxDGNqNqhIQYGLB', 'Bob'),
+    ('33333333-3333-3333-3333-333333333333', 'charlie@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqNqhIQYGLBj.3hKlxDGNqNqhIQYGLB', 'Charlie')
 ON CONFLICT (id) DO NOTHING;
 
 -- Insert a test document

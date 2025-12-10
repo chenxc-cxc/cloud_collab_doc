@@ -47,9 +47,9 @@ func (db *DB) Close() {
 func (db *DB) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	var user models.User
 	err := db.pool.QueryRow(ctx, `
-		SELECT id, email, name, COALESCE(avatar_url, ''), created_at, updated_at
+		SELECT id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
 		FROM users WHERE id = $1
-	`, id).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	`, id).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -63,9 +63,9 @@ func (db *DB) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
 	err := db.pool.QueryRow(ctx, `
-		SELECT id, email, name, COALESCE(avatar_url, ''), created_at, updated_at
+		SELECT id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
 		FROM users WHERE email = $1
-	`, email).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	`, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -75,18 +75,41 @@ func (db *DB) GetUserByEmail(ctx context.Context, email string) (*models.User, e
 	return &user, nil
 }
 
-// CreateUser creates a new user
+// CreateUser creates a new user without password (for backward compatibility)
 func (db *DB) CreateUser(ctx context.Context, email, name string) (*models.User, error) {
 	var user models.User
 	err := db.pool.QueryRow(ctx, `
 		INSERT INTO users (email, name)
 		VALUES ($1, $2)
-		RETURNING id, email, name, COALESCE(avatar_url, ''), created_at, updated_at
-	`, email, name).Scan(&user.ID, &user.Email, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+		RETURNING id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
+	`, email, name).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// CreateUserWithPassword creates a new user with password
+func (db *DB) CreateUserWithPassword(ctx context.Context, email, name, passwordHash string) (*models.User, error) {
+	var user models.User
+	err := db.pool.QueryRow(ctx, `
+		INSERT INTO users (email, name, password_hash)
+		VALUES ($1, $2, $3)
+		RETURNING id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
+	`, email, name, passwordHash).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpdateUserPassword updates a user's password
+func (db *DB) UpdateUserPassword(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	_, err := db.pool.Exec(ctx, `
+		UPDATE users SET password_hash = $2, updated_at = NOW()
+		WHERE id = $1
+	`, userID, passwordHash)
+	return err
 }
 
 // Document operations
@@ -484,4 +507,169 @@ func (db *DB) GetComment(ctx context.Context, id uuid.UUID) (*models.Comment, er
 		json.Unmarshal(selectionJSON, &comment.Selection)
 	}
 	return &comment, nil
+}
+
+// Access Request operations
+
+// CreateAccessRequest creates a new access request
+func (db *DB) CreateAccessRequest(ctx context.Context, docID, requesterID uuid.UUID, requestedRole, message string) (*models.AccessRequest, error) {
+	if requestedRole == "" {
+		requestedRole = "view"
+	}
+
+	var req models.AccessRequest
+	err := db.pool.QueryRow(ctx, `
+		INSERT INTO access_requests (doc_id, requester_id, requested_role, message)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (doc_id, requester_id) DO UPDATE SET
+			status = 'pending',
+			requested_role = $3,
+			message = $4,
+			updated_at = NOW()
+		RETURNING id, doc_id, requester_id, status, requested_role, COALESCE(message, ''), created_at, updated_at
+	`, docID, requesterID, requestedRole, message).Scan(
+		&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole, &req.Message, &req.CreatedAt, &req.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+// GetAccessRequest retrieves an access request by ID
+func (db *DB) GetAccessRequest(ctx context.Context, id uuid.UUID) (*models.AccessRequest, error) {
+	var req models.AccessRequest
+	var requester models.User
+	err := db.pool.QueryRow(ctx, `
+		SELECT ar.id, ar.doc_id, ar.requester_id, ar.status, ar.requested_role, 
+		       COALESCE(ar.message, ''), ar.created_at, ar.updated_at,
+		       u.id, u.email, u.name, COALESCE(u.avatar_url, '')
+		FROM access_requests ar
+		JOIN users u ON ar.requester_id = u.id
+		WHERE ar.id = $1
+	`, id).Scan(
+		&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole,
+		&req.Message, &req.CreatedAt, &req.UpdatedAt,
+		&requester.ID, &requester.Email, &requester.Name, &requester.AvatarURL,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	req.Requester = &requester
+	return &req, nil
+}
+
+// ListAccessRequestsByDoc returns all access requests for a document
+func (db *DB) ListAccessRequestsByDoc(ctx context.Context, docID uuid.UUID) ([]*models.AccessRequest, error) {
+	rows, err := db.pool.Query(ctx, `
+		SELECT ar.id, ar.doc_id, ar.requester_id, ar.status, ar.requested_role, 
+		       COALESCE(ar.message, ''), ar.created_at, ar.updated_at,
+		       u.id, u.email, u.name, COALESCE(u.avatar_url, '')
+		FROM access_requests ar
+		JOIN users u ON ar.requester_id = u.id
+		WHERE ar.doc_id = $1
+		ORDER BY ar.created_at DESC
+	`, docID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []*models.AccessRequest
+	for rows.Next() {
+		var req models.AccessRequest
+		var requester models.User
+		err := rows.Scan(
+			&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole,
+			&req.Message, &req.CreatedAt, &req.UpdatedAt,
+			&requester.ID, &requester.Email, &requester.Name, &requester.AvatarURL,
+		)
+		if err != nil {
+			return nil, err
+		}
+		req.Requester = &requester
+		requests = append(requests, &req)
+	}
+	return requests, nil
+}
+
+// UpdateAccessRequestStatus updates the status of an access request
+func (db *DB) UpdateAccessRequestStatus(ctx context.Context, id uuid.UUID, status string) (*models.AccessRequest, error) {
+	var req models.AccessRequest
+	err := db.pool.QueryRow(ctx, `
+		UPDATE access_requests 
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id, doc_id, requester_id, status, requested_role, COALESCE(message, ''), created_at, updated_at
+	`, id, status).Scan(
+		&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole, &req.Message, &req.CreatedAt, &req.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+// GetPendingAccessRequest checks if there is a pending access request for a user and document
+func (db *DB) GetPendingAccessRequest(ctx context.Context, docID, requesterID uuid.UUID) (*models.AccessRequest, error) {
+	var req models.AccessRequest
+	err := db.pool.QueryRow(ctx, `
+		SELECT id, doc_id, requester_id, status, requested_role, COALESCE(message, ''), created_at, updated_at
+		FROM access_requests
+		WHERE doc_id = $1 AND requester_id = $2
+	`, docID, requesterID).Scan(
+		&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole, &req.Message, &req.CreatedAt, &req.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &req, nil
+}
+
+// ListPendingAccessRequestsForOwner returns all pending access requests for documents owned by a user
+func (db *DB) ListPendingAccessRequestsForOwner(ctx context.Context, ownerID uuid.UUID) ([]*models.AccessRequest, error) {
+	rows, err := db.pool.Query(ctx, `
+		SELECT ar.id, ar.doc_id, ar.requester_id, ar.status, ar.requested_role, 
+		       COALESCE(ar.message, ''), ar.created_at, ar.updated_at,
+		       u.id, u.email, u.name, COALESCE(u.avatar_url, ''),
+		       d.id, d.title
+		FROM access_requests ar
+		JOIN users u ON ar.requester_id = u.id
+		JOIN documents d ON ar.doc_id = d.id
+		WHERE d.owner_id = $1 AND ar.status = 'pending'
+		ORDER BY ar.created_at DESC
+	`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []*models.AccessRequest
+	for rows.Next() {
+		var req models.AccessRequest
+		var requester models.User
+		var doc models.Document
+		err := rows.Scan(
+			&req.ID, &req.DocID, &req.RequesterID, &req.Status, &req.RequestedRole,
+			&req.Message, &req.CreatedAt, &req.UpdatedAt,
+			&requester.ID, &requester.Email, &requester.Name, &requester.AvatarURL,
+			&doc.ID, &doc.Title,
+		)
+		if err != nil {
+			return nil, err
+		}
+		req.Requester = &requester
+		req.Document = &doc
+		requests = append(requests, &req)
+	}
+	return requests, nil
 }

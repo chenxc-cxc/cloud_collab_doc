@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, UserPlus, Trash2, Copy, Check } from 'lucide-react'
+import { X, UserPlus, Trash2, Copy, Check, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { DocumentPermission, PermissionRole } from '@/types'
+import type { DocumentPermission, PermissionRole, AccessRequest } from '@/types'
 
 interface ShareModalProps {
     docId: string
@@ -12,10 +12,12 @@ interface ShareModalProps {
 
 export default function ShareModal({ docId, onClose }: ShareModalProps) {
     const [permissions, setPermissions] = useState<DocumentPermission[]>([])
+    const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
     const [loading, setLoading] = useState(true)
     const [email, setEmail] = useState('')
     const [role, setRole] = useState<PermissionRole>('edit')
     const [copied, setCopied] = useState(false)
+    const [processingRequest, setProcessingRequest] = useState<string | null>(null)
     const [testUsers, setTestUsers] = useState([
         { id: '11111111-1111-1111-1111-111111111111', email: 'alice@example.com', name: 'Alice' },
         { id: '22222222-2222-2222-2222-222222222222', email: 'bob@example.com', name: 'Bob' },
@@ -23,15 +25,19 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
     ])
 
     useEffect(() => {
-        loadPermissions()
+        loadData()
     }, [docId])
 
-    const loadPermissions = async () => {
+    const loadData = async () => {
         try {
-            const perms = await api.listPermissions(docId)
+            const [perms, requests] = await Promise.all([
+                api.listPermissions(docId),
+                api.listAccessRequests(docId).catch(() => []) // May fail if not owner
+            ])
             setPermissions(perms)
+            setAccessRequests(requests)
         } catch (error) {
-            console.error('Failed to load permissions:', error)
+            console.error('Failed to load data:', error)
         } finally {
             setLoading(false)
         }
@@ -40,7 +46,7 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
     const addPermission = async (userId: string) => {
         try {
             await api.setPermission(docId, userId, role)
-            loadPermissions()
+            loadData()
             setEmail('')
         } catch (error) {
             console.error('Failed to add permission:', error)
@@ -50,7 +56,7 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
     const updatePermission = async (userId: string, newRole: PermissionRole) => {
         try {
             await api.setPermission(docId, userId, newRole)
-            loadPermissions()
+            loadData()
         } catch (error) {
             console.error('Failed to update permission:', error)
         }
@@ -61,11 +67,25 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
 
         try {
             await api.removePermission(docId, userId)
-            loadPermissions()
+            loadData()
         } catch (error) {
             console.error('Failed to remove permission:', error)
         }
     }
+
+    const handleAccessRequest = async (requestId: string, action: 'approved' | 'rejected') => {
+        setProcessingRequest(requestId)
+        try {
+            await api.updateAccessRequest(requestId, action)
+            loadData()
+        } catch (error) {
+            console.error('Failed to update access request:', error)
+        } finally {
+            setProcessingRequest(null)
+        }
+    }
+
+
 
     const copyLink = () => {
         const url = `${window.location.origin}/doc/${docId}`
@@ -121,8 +141,8 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
                             <button
                                 onClick={copyLink}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${copied
-                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                        : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300'
                                     }`}
                             >
                                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -219,6 +239,60 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
                             </div>
                         )}
                     </div>
+
+                    {/* Pending access requests */}
+                    {accessRequests.filter(r => r.status === 'pending').length > 0 && (
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                Pending Access Requests
+                            </label>
+                            <div className="space-y-2">
+                                {accessRequests.filter(r => r.status === 'pending').map((request) => (
+                                    <div
+                                        key={request.id}
+                                        className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white text-sm font-medium">
+                                                {(request.requester?.name || 'U').charAt(0).toUpperCase()}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-900 dark:text-white">
+                                                    {request.requester?.name || 'Unknown User'}
+                                                </p>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                                    <Clock className="w-3 h-3" />
+                                                    Requested {request.requested_role} access
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {processingRequest === request.id ? (
+                                                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleAccessRequest(request.id, 'approved')}
+                                                        className="p-1.5 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg transition-colors"
+                                                        title="Approve"
+                                                    >
+                                                        <CheckCircle className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleAccessRequest(request.id, 'rejected')}
+                                                        className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                                                        title="Reject"
+                                                    >
+                                                        <XCircle className="w-5 h-5" />
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}

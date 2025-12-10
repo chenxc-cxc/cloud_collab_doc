@@ -1,4 +1,4 @@
-import type { User, Document, Comment, DocumentPermission, LoginResponse } from '@/types'
+import type { User, Document, Comment, DocumentPermission, LoginResponse, AccessRequest } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
@@ -54,15 +54,67 @@ class ApiClient {
         }
     }
 
+    clearAuth() {
+        this.token = null
+        this.userId = null
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('token')
+            localStorage.removeItem('userId')
+        }
+    }
+
+    isAuthenticated(): boolean {
+        return !!this.token
+    }
+
     // Auth
-    async login(email: string): Promise<LoginResponse> {
-        const response = await this.fetch<LoginResponse>('/api/auth/login', {
+    async register(email: string, name: string, password: string): Promise<LoginResponse> {
+        const response = await this.fetch<LoginResponse>('/api/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ email, name, password }),
         })
         this.setToken(response.token)
         this.setUserId(response.user.id)
         return response
+    }
+
+    async login(email: string, password: string): Promise<LoginResponse> {
+        const response = await this.fetch<LoginResponse>('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+        })
+        this.setToken(response.token)
+        this.setUserId(response.user.id)
+        return response
+    }
+
+    async logout(): Promise<void> {
+        try {
+            await this.fetch('/api/auth/logout', { method: 'POST' })
+        } finally {
+            this.clearAuth()
+        }
+    }
+
+    async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+        await this.fetch('/api/auth/password', {
+            method: 'PUT',
+            body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+        })
+    }
+
+    async forgotPassword(email: string): Promise<void> {
+        await this.fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+        })
+    }
+
+    async resetPassword(token: string, newPassword: string): Promise<void> {
+        await this.fetch('/api/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ token, new_password: newPassword }),
+        })
     }
 
     async getCurrentUser(): Promise<User> {
@@ -154,6 +206,29 @@ class ApiClient {
         if (this.token) params.set('token', this.token)
         if (this.userId) params.set('userId', this.userId)
         return `${wsUrl}/ws/collab/${docId}?${params.toString()}`
+    }
+
+    // Access Requests
+    async requestAccess(docId: string, requestedRole?: string, message?: string): Promise<AccessRequest> {
+        return this.fetch<AccessRequest>(`/api/docs/${docId}/access-request`, {
+            method: 'POST',
+            body: JSON.stringify({ requested_role: requestedRole || 'view', message }),
+        })
+    }
+
+    async listAccessRequests(docId: string): Promise<AccessRequest[]> {
+        return this.fetch<AccessRequest[]>(`/api/docs/${docId}/access-requests`)
+    }
+
+    async listMyPendingAccessRequests(): Promise<AccessRequest[]> {
+        return this.fetch<AccessRequest[]>('/api/access-requests/pending')
+    }
+
+    async updateAccessRequest(requestId: string, status: 'approved' | 'rejected'): Promise<AccessRequest> {
+        return this.fetch<AccessRequest>(`/api/access-requests/${requestId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status }),
+        })
     }
 }
 
