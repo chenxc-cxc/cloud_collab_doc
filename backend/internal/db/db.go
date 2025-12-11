@@ -884,3 +884,161 @@ func (db *DB) MoveFolder(ctx context.Context, folderID uuid.UUID, parentID *uuid
 	`, folderID, parentID)
 	return err
 }
+
+// GetFolderTree returns the complete folder tree for a user using WITH RECURSIVE
+func (db *DB) GetFolderTree(ctx context.Context, ownerID uuid.UUID) ([]*models.FolderTreeNode, error) {
+	rows, err := db.pool.Query(ctx, `
+		WITH RECURSIVE folder_tree AS (
+			-- Base case: root folders (no parent)
+			SELECT 
+				f.id, f.name, f.owner_id, f.parent_id, f.created_at, f.updated_at,
+				0 as level,
+				'/' || f.name as path
+			FROM folders f
+			WHERE f.owner_id = $1 AND f.parent_id IS NULL
+			
+			UNION ALL
+			
+			-- Recursive case: child folders
+			SELECT 
+				f.id, f.name, f.owner_id, f.parent_id, f.created_at, f.updated_at,
+				ft.level + 1 as level,
+				ft.path || '/' || f.name as path
+			FROM folders f
+			INNER JOIN folder_tree ft ON f.parent_id = ft.id
+			WHERE f.owner_id = $1
+		)
+		SELECT 
+			ft.id, ft.name, ft.owner_id, ft.parent_id, ft.created_at, ft.updated_at,
+			ft.level, ft.path,
+			COALESCE((SELECT COUNT(*) FROM documents d WHERE d.folder_id = ft.id), 0) as doc_count
+		FROM folder_tree ft
+		ORDER BY ft.path ASC
+	`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var nodes []*models.FolderTreeNode
+	for rows.Next() {
+		var node models.FolderTreeNode
+		err := rows.Scan(
+			&node.ID, &node.Name, &node.OwnerID, &node.ParentID,
+			&node.CreatedAt, &node.UpdatedAt, &node.Level, &node.Path, &node.DocCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, &node)
+	}
+
+	// Build the tree structure
+	tree := buildFolderTree(nodes)
+
+	// Fetch all documents that belong to folders owned by this user
+	docRows, err := db.pool.Query(ctx, `
+		SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at
+		FROM documents d
+		JOIN document_permissions dp ON d.id = dp.doc_id AND dp.user_id = $1
+		WHERE d.folder_id IS NOT NULL
+		ORDER BY d.title ASC
+	`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer docRows.Close()
+
+	// Create a map of folder ID to documents
+	folderDocs := make(map[uuid.UUID][]*models.Document)
+	for docRows.Next() {
+		var doc models.Document
+		err := docRows.Scan(
+			&doc.ID, &doc.Title, &doc.OwnerID, &doc.FolderID, &doc.CreatedAt, &doc.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if doc.FolderID != nil {
+			folderDocs[*doc.FolderID] = append(folderDocs[*doc.FolderID], &doc)
+		}
+	}
+
+	// Also fetch root-level documents (no folder)
+	rootDocRows, err := db.pool.Query(ctx, `
+		SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at
+		FROM documents d
+		JOIN document_permissions dp ON d.id = dp.doc_id AND dp.user_id = $1
+		WHERE d.folder_id IS NULL
+		ORDER BY d.title ASC
+	`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rootDocRows.Close()
+
+	var rootDocs []*models.Document
+	for rootDocRows.Next() {
+		var doc models.Document
+		err := rootDocRows.Scan(
+			&doc.ID, &doc.Title, &doc.OwnerID, &doc.FolderID, &doc.CreatedAt, &doc.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rootDocs = append(rootDocs, &doc)
+	}
+
+	// Recursively attach documents to folder nodes
+	attachDocumentsToTree(tree, folderDocs)
+
+	// Create a virtual "root" representation that includes root-level documents
+	// We'll include root docs in the response by returning them alongside tree
+	// For now, we add them to a special handling in frontend
+	// Or we can add a special root node - but simpler to just return tree and rootDocs separately
+	// Actually, let's store root docs in the response metadata or handle in frontend
+
+	return tree, nil
+}
+
+// attachDocumentsToTree recursively attaches documents to folder nodes
+func attachDocumentsToTree(nodes []*models.FolderTreeNode, folderDocs map[uuid.UUID][]*models.Document) {
+	for _, node := range nodes {
+		if docs, ok := folderDocs[node.ID]; ok {
+			node.Documents = docs
+		} else {
+			node.Documents = []*models.Document{}
+		}
+		if len(node.Children) > 0 {
+			attachDocumentsToTree(node.Children, folderDocs)
+		}
+	}
+}
+
+// buildFolderTree converts a flat list of nodes into a nested tree structure
+func buildFolderTree(nodes []*models.FolderTreeNode) []*models.FolderTreeNode {
+	if len(nodes) == 0 {
+		return []*models.FolderTreeNode{}
+	}
+
+	// Create a map for quick lookup
+	nodeMap := make(map[uuid.UUID]*models.FolderTreeNode)
+	for _, node := range nodes {
+		node.Children = []*models.FolderTreeNode{}
+		nodeMap[node.ID] = node
+	}
+
+	// Build tree by linking children to parents
+	var roots []*models.FolderTreeNode
+	for _, node := range nodes {
+		if node.ParentID == nil {
+			roots = append(roots, node)
+		} else {
+			if parent, ok := nodeMap[*node.ParentID]; ok {
+				parent.Children = append(parent.Children, node)
+			}
+		}
+	}
+
+	return roots
+}

@@ -1,4 +1,4 @@
-import type { User, Document, Comment, DocumentPermission, LoginResponse, AccessRequest, Folder, FolderContents } from '@/types'
+import type { User, Document, Comment, DocumentPermission, LoginResponse, AccessRequest, Folder, FolderContents, FolderTreeNode } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
@@ -274,6 +274,10 @@ class ApiClient {
             method: 'PUT',
             body: JSON.stringify({ folder_id: parentId || null }),
         })
+    }
+
+    async getFolderTree(): Promise<FolderTreeNode[]> {
+        return this.fetch<FolderTreeNode[]>('/api/folders/tree')
     }
 }
 

@@ -103,7 +103,8 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	folders.Use(auth.AuthMiddleware(h.db))
 	{
 		folders.POST("", h.CreateFolder)
-		folders.GET("", h.GetFolderContents) // Query param: folder_id (optional)
+		folders.GET("", h.GetFolderContents)  // Query param: folder_id (optional)
+		folders.GET("/tree", h.GetFolderTree) // Get complete folder tree
 		folders.GET("/:id", h.GetFolderByID)
 		folders.GET("/:id/path", h.GetFolderPath) // Get full parent chain
 		folders.PUT("/:id", h.UpdateFolder)
@@ -1055,4 +1056,25 @@ func (h *Handler) MoveDocument(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Document moved"})
+}
+
+// GetFolderTree returns the complete folder tree for the current user
+func (h *Handler) GetFolderTree(c *gin.Context) {
+	user := auth.GetUserFromContext(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	tree, err := h.db.GetFolderTree(c.Request.Context(), user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get folder tree"})
+		return
+	}
+
+	if tree == nil {
+		tree = []*models.FolderTreeNode{}
+	}
+
+	c.JSON(http.StatusOK, tree)
 }

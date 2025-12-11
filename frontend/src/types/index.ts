@@ -120,3 +120,19 @@ export interface FolderContents {
     folders: Folder[]
     documents: Document[]
 }
+
+// Folder tree node with nested children
+export interface FolderTreeNode {
+    id: string
+    name: string
+    owner_id: string
+    parent_id?: string
+    level: number
+    path: string
+    doc_count: number
+    children?: FolderTreeNode[]
+    documents?: Document[]
+    created_at: string
+    updated_at: string
+}
+

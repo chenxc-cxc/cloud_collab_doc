@@ -260,3 +260,18 @@ type FolderContents struct {
 	Folders   []*Folder   `json:"folders"`
 	Documents []*Document `json:"documents"`
 }
+
+// FolderTreeNode represents a folder node in the tree structure
+type FolderTreeNode struct {
+	ID        uuid.UUID         `json:"id" db:"id"`
+	Name      string            `json:"name" db:"name"`
+	OwnerID   uuid.UUID         `json:"owner_id" db:"owner_id"`
+	ParentID  *uuid.UUID        `json:"parent_id,omitempty" db:"parent_id"`
+	Level     int               `json:"level" db:"level"` // Depth in the tree (0 = root)
+	Path      string            `json:"path" db:"path"`   // Full path like /folder1/folder2
+	CreatedAt time.Time         `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at" db:"updated_at"`
+	Children  []*FolderTreeNode `json:"children,omitempty"`       // Nested children (built in code)
+	DocCount  int               `json:"doc_count" db:"doc_count"` // Number of documents in this folder
+	Documents []*Document       `json:"documents,omitempty"`      // Documents in this folder
+}
