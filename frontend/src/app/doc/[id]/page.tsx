@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Users, Share2, MessageSquare, History, Settings, Lock, FileQuestion, Send, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, Users, Share2, MessageSquare, History, Settings, Lock, FileQuestion, Send, Check, Loader2, List } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useCollaboration } from '@/hooks/useCollaboration'
@@ -11,6 +11,7 @@ import Toolbar from '@/components/Toolbar'
 import CollaboratorsList from '@/components/CollaboratorsList'
 import CommentsPanel from '@/components/CommentsPanel'
 import ShareModal from '@/components/ShareModal'
+import OutlineSidebar from '@/components/OutlineSidebar'
 import type { Document, Comment } from '@/types'
 
 export default function DocumentPage() {
@@ -33,6 +34,7 @@ export default function DocumentPage() {
     const [error, setError] = useState<string | null>(null)
     const [showComments, setShowComments] = useState(false)
     const [showShare, setShowShare] = useState(false)
+    const [showOutline, setShowOutline] = useState(true)
 
     const [permission, setPermission] = useState<string>('view')
     const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
@@ -187,14 +189,26 @@ export default function DocumentPage() {
     return (
         <div className="min-h-screen flex flex-col">
             {/* Header */}
-            <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700">
-                <div className="max-w-7xl mx-auto px-4">
-                    <div className="flex items-center justify-between h-14">
+            <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700" id="doc-header">
+                <div className="w-full px-4">
+                    <div className="flex items-center justify-between h-14 gap-4">
                         {/* Left side */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {/* Outline toggle button */}
+                            <button
+                                onClick={() => setShowOutline(!showOutline)}
+                                className={`p-2 rounded-lg transition-colors flex-shrink-0 ${showOutline
+                                    ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                    }`}
+                                title={showOutline ? '隐藏目录' : '显示目录'}
+                            >
+                                <List className="w-5 h-5" />
+                            </button>
+
                             <button
                                 onClick={() => router.push(getBackUrl())}
-                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
                             >
                                 <ArrowLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
                             </button>
@@ -205,19 +219,19 @@ export default function DocumentPage() {
                                 onChange={(e) => setDocument(prev => prev ? { ...prev, title: e.target.value } : null)}
                                 onBlur={(e) => updateTitle(e.target.value)}
                                 disabled={!canEdit}
-                                className="text-lg font-semibold bg-transparent border-none outline-none focus:ring-2 focus:ring-primary-500 rounded px-2 py-1 text-slate-900 dark:text-white disabled:opacity-75"
+                                className="text-lg font-semibold bg-transparent border-none outline-none focus:ring-2 focus:ring-primary-500 rounded px-2 py-1 text-slate-900 dark:text-white disabled:opacity-75 min-w-0 flex-1 truncate"
                             />
                         </div>
 
                         {/* Right side */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                             {/* Connection status */}
-                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm ${isConnected
+                            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${isConnected
                                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                                 : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                                 }`}>
-                                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                                {isConnected ? 'Connected' : 'Connecting...'}
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                                <span className="hidden sm:inline">{isConnected ? 'Connected' : 'Connecting...'}</span>
                             </div>
 
                             {/* Collaborators */}
@@ -238,10 +252,10 @@ export default function DocumentPage() {
                             {permission === 'owner' && (
                                 <button
                                     onClick={() => setShowShare(true)}
-                                    className="flex items-center gap-2 px-3 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors"
+                                    className="flex items-center gap-2 px-3 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
                                 >
                                     <Share2 className="w-4 h-4" />
-                                    Share
+                                    <span className="hidden sm:inline">Share</span>
                                 </button>
                             )}
                         </div>
@@ -252,12 +266,19 @@ export default function DocumentPage() {
                 </div>
             </header>
 
+            {/* Outline Sidebar */}
+            <OutlineSidebar
+                editor={editor}
+                isOpen={showOutline}
+                onToggle={() => setShowOutline(!showOutline)}
+            />
+
             {/* Main content */}
-            <main className="flex-1 flex">
-                {/* Editor */}
-                <div className={`flex-1 transition-all ${showComments ? 'mr-80' : ''}`}>
-                    <div className="max-w-4xl mx-auto py-8 px-4">
-                        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 min-h-[600px]">
+            <main className={`flex-1 flex transition-all duration-300 ${showOutline ? 'ml-64' : 'ml-0'}`}>
+                {/* Editor - Full width */}
+                <div className={`flex-1 transition-all duration-300 ${showComments ? 'mr-80' : ''}`}>
+                    <div className="h-full px-8 py-6">
+                        <div className="h-full bg-white dark:bg-slate-800/50 min-h-[calc(100vh-10rem)]">
                             {editor ? (
                                 <Editor editor={editor} />
                             ) : (

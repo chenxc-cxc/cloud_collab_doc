@@ -8,8 +8,11 @@ interface EditorProps {
 
 export default function EditorComponent({ editor }: EditorProps) {
     return (
-        <div className="min-h-[500px]">
-            <EditorContent editor={editor} />
+        <div className="h-full min-h-[calc(100vh-12rem)]">
+            <EditorContent
+                editor={editor}
+                className="h-full focus:outline-none"
+            />
         </div>
     )
 }

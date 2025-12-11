@@ -18,20 +18,27 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
+  background: linear-gradient(to bottom,
       transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+      rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
   min-height: 100vh;
 }
 
 /* TipTap Editor Styles */
 .tiptap {
   outline: none;
-  min-height: 500px;
-  padding: 1rem;
+  min-height: calc(100vh - 12rem);
+  padding: 2rem 3rem;
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+
+.tiptap>*+* {
+  margin-top: 0.75em;
+}
+
+.tiptap:focus {
+  outline: none;
 }
 
 .tiptap p {
@@ -125,11 +132,11 @@ body {
   gap: 0.5em;
 }
 
-.tiptap ul[data-type="taskList"] li > label {
+.tiptap ul[data-type="taskList"] li>label {
   flex-shrink: 0;
 }
 
-.tiptap ul[data-type="taskList"] li > div {
+.tiptap ul[data-type="taskList"] li>div {
   flex: 1;
 }
 

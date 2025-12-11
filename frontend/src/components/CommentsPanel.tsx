@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Send, Check, CornerDownRight } from 'lucide-react'
 import type { Comment } from '@/types'
 
@@ -18,6 +18,28 @@ export default function CommentsPanel({
     canComment
 }: CommentsPanelProps) {
     const [newComment, setNewComment] = useState('')
+    const [headerHeight, setHeaderHeight] = useState(56)
+
+    useEffect(() => {
+        // Get header height dynamically
+        const updateHeaderHeight = () => {
+            const header = document.getElementById('doc-header')
+            if (header) {
+                setHeaderHeight(header.offsetHeight)
+            }
+        }
+
+        updateHeaderHeight()
+        window.addEventListener('resize', updateHeaderHeight)
+
+        // Check again after a short delay for toolbar to render
+        const timer = setTimeout(updateHeaderHeight, 100)
+
+        return () => {
+            window.removeEventListener('resize', updateHeaderHeight)
+            clearTimeout(timer)
+        }
+    }, [])
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -47,7 +69,10 @@ export default function CommentsPanel({
     }
 
     return (
-        <div className="fixed right-0 top-14 bottom-0 w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col animate-slide-up">
+        <div
+            className="fixed right-0 bottom-0 w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col animate-slide-up"
+            style={{ top: `${headerHeight}px` }}
+        >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
                 <h3 className="font-semibold text-slate-900 dark:text-white">
