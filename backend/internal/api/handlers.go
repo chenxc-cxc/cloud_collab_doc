@@ -127,13 +127,17 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] Register: attempting for email=%s", req.Email)
+
 	// Check if user already exists
 	existingUser, err := h.db.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
+		log.Printf("[API] Register: db error checking existing user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 	if existingUser != nil {
+		log.Printf("[API] Register: email already exists: %s", req.Email)
 		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
 		return
 	}
@@ -141,6 +145,7 @@ func (h *Handler) Register(c *gin.Context) {
 	// Hash password
 	passwordHash, err := auth.HashPassword(req.Password)
 	if err != nil {
+		log.Printf("[API] Register: failed to hash password: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
@@ -148,26 +153,28 @@ func (h *Handler) Register(c *gin.Context) {
 	// Create user
 	user, err := h.db.CreateUserWithPassword(c.Request.Context(), req.Email, req.Name, passwordHash)
 	if err != nil {
+		log.Printf("[API] Register: failed to create user: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
+	log.Printf("[API] Register: user created, id=%s", user.ID)
 
 	// Create welcome document for the new user
 	welcomeTitle := "👋 Welcome to CollabDocs, " + user.Name + "!"
 	_, err = h.db.CreateDocumentWithInitialContent(c.Request.Context(), welcomeTitle, user.ID)
 	if err != nil {
-		// Log error but don't fail registration
-		// The user can still use the app, just won't have the welcome doc
-		// In production, you might want to log this properly
+		log.Printf("[API] Register: failed to create welcome doc (non-fatal): %v", err)
 	}
 
 	// Generate token
 	token, err := auth.GenerateToken(user)
 	if err != nil {
+		log.Printf("[API] Register: failed to generate token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
+	log.Printf("[API] Register: success for email=%s, userID=%s", req.Email, user.ID)
 	c.JSON(http.StatusCreated, models.LoginResponse{
 		Token: token,
 		User:  user,
@@ -322,14 +329,17 @@ func (h *Handler) GetCurrentUser(c *gin.Context) {
 // ListDocuments returns all documents accessible by the user
 func (h *Handler) ListDocuments(c *gin.Context) {
 	user := auth.GetUserFromContext(c)
+	log.Printf("[API] ListDocuments: userID=%s", user.ID)
 	docs, err := h.db.ListDocuments(c.Request.Context(), user.ID)
 	if err != nil {
+		log.Printf("[API] ListDocuments: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list documents"})
 		return
 	}
 	if docs == nil {
 		docs = []*models.Document{}
 	}
+	log.Printf("[API] ListDocuments: found %d documents", len(docs))
 	c.JSON(http.StatusOK, docs)
 }
 
@@ -359,16 +369,20 @@ func (h *Handler) GetDocument(c *gin.Context) {
 	docIDStr := c.Param("id")
 	docID, _ := uuid.Parse(docIDStr)
 
+	log.Printf("[API] GetDocument: docID=%s", docID)
 	doc, err := h.db.GetDocument(c.Request.Context(), docID)
 	if err != nil {
+		log.Printf("[API] GetDocument: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get document"})
 		return
 	}
 	if doc == nil {
+		log.Printf("[API] GetDocument: not found docID=%s", docID)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 		return
 	}
 
+	log.Printf("[API] GetDocument: success docID=%s", docID)
 	c.JSON(http.StatusOK, doc)
 }
 
@@ -383,8 +397,10 @@ func (h *Handler) UpdateDocument(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] UpdateDocument: docID=%s, title=%s", docID, req.Title)
 	doc, err := h.db.UpdateDocument(c.Request.Context(), docID, req.Title)
 	if err != nil {
+		log.Printf("[API] UpdateDocument: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update document"})
 		return
 	}
@@ -393,6 +409,7 @@ func (h *Handler) UpdateDocument(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] UpdateDocument: success docID=%s", docID)
 	c.JSON(http.StatusOK, doc)
 }
 
@@ -401,11 +418,14 @@ func (h *Handler) DeleteDocument(c *gin.Context) {
 	docIDStr := c.Param("id")
 	docID, _ := uuid.Parse(docIDStr)
 
+	log.Printf("[API] DeleteDocument: docID=%s", docID)
 	if err := h.db.DeleteDocument(c.Request.Context(), docID); err != nil {
+		log.Printf("[API] DeleteDocument: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete document"})
 		return
 	}
 
+	log.Printf("[API] DeleteDocument: success docID=%s", docID)
 	c.JSON(http.StatusOK, gin.H{"message": "Document deleted"})
 }
 
@@ -638,19 +658,23 @@ func (h *Handler) GetYjsSnapshot(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] GetYjsSnapshot: docID=%s", docID)
 	snapshot, err := h.db.GetLatestSnapshot(c.Request.Context(), docID)
 	if err != nil {
+		log.Printf("[API] GetYjsSnapshot: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get snapshot"})
 		return
 	}
 
 	if snapshot == nil {
+		log.Printf("[API] GetYjsSnapshot: no snapshot found for docID=%s", docID)
 		c.JSON(http.StatusOK, gin.H{"snapshot": nil})
 		return
 	}
 
 	// Encode snapshot to base64 for transmission
 	snapshotBase64 := base64.StdEncoding.EncodeToString(snapshot.Snapshot)
+	log.Printf("[API] GetYjsSnapshot: success docID=%s, version=%d, size=%d bytes", docID, snapshot.Version, len(snapshot.Snapshot))
 	c.JSON(http.StatusOK, gin.H{
 		"snapshot": snapshotBase64,
 		"version":  snapshot.Version,
@@ -674,13 +698,16 @@ func (h *Handler) SaveYjsSnapshot(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] SaveYjsSnapshot: docID=%s, size=%d chars", docID, len(req.Snapshot))
 	// Save snapshot (base64 encoded)
 	_, err = h.db.SaveSnapshotBase64(c.Request.Context(), docID, req.Snapshot)
 	if err != nil {
+		log.Printf("[API] SaveYjsSnapshot: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save snapshot"})
 		return
 	}
 
+	log.Printf("[API] SaveYjsSnapshot: success docID=%s", docID)
 	c.JSON(http.StatusOK, gin.H{"message": "Snapshot saved"})
 }
 
