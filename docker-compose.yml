@@ -44,7 +44,7 @@ services:
   api-service:
     build:
       context: ./backend
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile
     container_name: collab-api
     ports:
       - "18080:8080"
