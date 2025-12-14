@@ -20,7 +20,50 @@ The application is deployed on cloud infrastructure:
 - **Backend API & Y-WebSocket & Redis:** Deployed on cloud server (Railway)
 - **Database**: PostgreSQL hosted on Supabase
 
+### Troubleshooting: Connection Timeout
 
+If you encounter connection timeout when accessing the frontend URL:
+
+```bash
+curl: (28) Failed to connect to cswuncollabdocs.vercel.app port 443: Couldn't connect to server
+```
+
+This is typically caused by **DNS resolution issues**. Some DNS servers (e.g., 114.114.114.114) cannot resolve `*.vercel.app` subdomains.
+
+**Recommended DNS Servers:**
+
+| DNS | Address | Note |
+|-----|---------|------|
+| Alibaba DNS | 223.5.5.5 / 223.6.6.6 | Fast in China |
+| Tencent DNS | 119.29.29.29 | Fast in China |
+| Cloudflare | 1.1.1.1 | May need testing |
+| Google DNS | 8.8.8.8 / 8.8.4.4 | May require proxy |
+
+**Solution: Change DNS Server**
+
+1. Test if DNS is the issue:
+   ```bash
+   nslookup cswuncollabdocs.vercel.app 223.5.5.5
+   ```
+
+2. If the above works, change your DNS settings:
+
+   **Windows:**
+   - Open Control Panel → Network and Internet → Network Connections
+   - Right-click your connection → Properties → IPv4 → Properties
+   - Select "Use the following DNS server addresses":
+     - Preferred: `223.5.5.5` (Alibaba DNS)
+     - Alternate: `223.6.6.6`
+   - Click OK, then run: `ipconfig /flushdns`
+
+   **macOS/Linux:**
+   ```bash
+   # macOS
+   sudo networksetup -setdnsservers Wi-Fi 223.5.5.5 223.6.6.6
+   
+   # Linux (temporary)
+   echo "nameserver 223.5.5.5" | sudo tee /etc/resolv.conf
+   ```
 
 ## Demo
 
