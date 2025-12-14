@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/collab-docs/backend/internal/models"
@@ -175,8 +176,11 @@ func (db *DB) GetDocument(ctx context.Context, id uuid.UUID) (*models.Document, 
 
 // CreateDocument creates a new document
 func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUID) (*models.Document, error) {
+	log.Printf("[DB] CreateDocument: starting, title=%s, ownerID=%s", title, ownerID)
+
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
+		log.Printf("[DB] CreateDocument: failed to begin tx: %v", err)
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
@@ -188,8 +192,10 @@ func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUI
 		RETURNING id, title, owner_id, created_at, updated_at
 	`, title, ownerID).Scan(&doc.ID, &doc.Title, &doc.OwnerID, &doc.CreatedAt, &doc.UpdatedAt)
 	if err != nil {
+		log.Printf("[DB] CreateDocument: failed to insert document: %v", err)
 		return nil, err
 	}
+	log.Printf("[DB] CreateDocument: document inserted, id=%s", doc.ID)
 
 	// Create owner permission
 	_, err = tx.Exec(ctx, `
@@ -197,13 +203,17 @@ func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUI
 		VALUES ($1, $2, 'owner')
 	`, doc.ID, ownerID)
 	if err != nil {
+		log.Printf("[DB] CreateDocument: failed to insert permission: %v", err)
 		return nil, err
 	}
+	log.Printf("[DB] CreateDocument: permission inserted")
 
 	if err := tx.Commit(ctx); err != nil {
+		log.Printf("[DB] CreateDocument: failed to commit: %v", err)
 		return nil, err
 	}
 
+	log.Printf("[DB] CreateDocument: success, docID=%s", doc.ID)
 	return &doc, nil
 }
 
