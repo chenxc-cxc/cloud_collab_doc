@@ -545,26 +545,32 @@ func (db *DB) ListComments(ctx context.Context, docID uuid.UUID) ([]*models.Comm
 
 // CreateComment creates a new comment
 func (db *DB) CreateComment(ctx context.Context, docID, userID uuid.UUID, content string, selection *models.Selection, parentID *uuid.UUID) (*models.Comment, error) {
-	var selectionJSON []byte
+	// For simple protocol mode, we need to pass JSONB as string, not []byte
+	var selectionStr *string
 	if selection != nil {
-		selectionJSON, _ = json.Marshal(selection)
+		jsonBytes, _ := json.Marshal(selection)
+		s := string(jsonBytes)
+		selectionStr = &s
 	}
 
 	var comment models.Comment
+	var selectionJSON []byte
 	err := db.pool.QueryRow(ctx, `
 		INSERT INTO comments (doc_id, user_id, content, selection, parent_id)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3, $4::jsonb, $5)
 		RETURNING id, doc_id, user_id, content, selection, resolved, parent_id, created_at, updated_at
-	`, docID, userID, content, selectionJSON, parentID).Scan(
+	`, docID, userID, content, selectionStr, parentID).Scan(
 		&comment.ID, &comment.DocID, &comment.UserID, &comment.Content, &selectionJSON,
 		&comment.Resolved, &comment.ParentID, &comment.CreatedAt, &comment.UpdatedAt,
 	)
 	if err != nil {
+		log.Printf("[DB] CreateComment: error: %v", err)
 		return nil, err
 	}
 	if selectionJSON != nil {
 		json.Unmarshal(selectionJSON, &comment.Selection)
 	}
+	log.Printf("[DB] CreateComment: success, commentID=%s", comment.ID)
 	return &comment, nil
 }
 
