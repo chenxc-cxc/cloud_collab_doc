@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
+	"github.com/collab-docs/backend/internal/logger"
 	"github.com/collab-docs/backend/internal/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -35,7 +35,7 @@ func New(ctx context.Context) (*DB, error) {
 	// PgBouncer in transaction mode doesn't support prepared statements
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
-	log.Printf("[DB] Connecting to database...")
+	logger.Info("[DB] Connecting to database...")
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
@@ -45,7 +45,7 @@ func New(ctx context.Context) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log.Printf("[DB] Database connection established")
+	logger.Info("[DB] Database connection established")
 	return &DB{pool: pool}, nil
 }
 
@@ -74,21 +74,21 @@ func (db *DB) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
 
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	log.Printf("[DB] GetUserByEmail: querying email=%s", email)
+	logger.Info("[DB] GetUserByEmail: querying email=%s", email)
 	var user models.User
 	err := db.pool.QueryRow(ctx, `
 		SELECT id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
 		FROM users WHERE email = $1
 	`, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	if err == pgx.ErrNoRows {
-		log.Printf("[DB] GetUserByEmail: no user found for email=%s", email)
+		logger.Info("[DB] GetUserByEmail: no user found for email=%s", email)
 		return nil, nil
 	}
 	if err != nil {
-		log.Printf("[DB] GetUserByEmail: query error: %v", err)
+		logger.Error("[DB] GetUserByEmail: query error: %v", err)
 		return nil, err
 	}
-	log.Printf("[DB] GetUserByEmail: found user id=%s", user.ID)
+	logger.Info("[DB] GetUserByEmail: found user id=%s", user.ID)
 	return &user, nil
 }
 
@@ -192,11 +192,11 @@ func (db *DB) GetDocument(ctx context.Context, id uuid.UUID) (*models.Document, 
 
 // CreateDocument creates a new document
 func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUID) (*models.Document, error) {
-	log.Printf("[DB] CreateDocument: starting, title=%s, ownerID=%s", title, ownerID)
+	logger.Info("[DB] CreateDocument: starting, title=%s, ownerID=%s", title, ownerID)
 
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
-		log.Printf("[DB] CreateDocument: failed to begin tx: %v", err)
+		logger.Error("[DB] CreateDocument: failed to begin tx: %v", err)
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
@@ -208,10 +208,10 @@ func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUI
 		RETURNING id, title, owner_id, created_at, updated_at
 	`, title, ownerID).Scan(&doc.ID, &doc.Title, &doc.OwnerID, &doc.CreatedAt, &doc.UpdatedAt)
 	if err != nil {
-		log.Printf("[DB] CreateDocument: failed to insert document: %v", err)
+		logger.Error("[DB] CreateDocument: failed to insert document: %v", err)
 		return nil, err
 	}
-	log.Printf("[DB] CreateDocument: document inserted, id=%s", doc.ID)
+	logger.Info("[DB] CreateDocument: document inserted, id=%s", doc.ID)
 
 	// Create owner permission
 	_, err = tx.Exec(ctx, `
@@ -219,17 +219,17 @@ func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUI
 		VALUES ($1, $2, 'owner')
 	`, doc.ID, ownerID)
 	if err != nil {
-		log.Printf("[DB] CreateDocument: failed to insert permission: %v", err)
+		logger.Error("[DB] CreateDocument: failed to insert permission: %v", err)
 		return nil, err
 	}
-	log.Printf("[DB] CreateDocument: permission inserted")
+	logger.Info("[DB] CreateDocument: permission inserted")
 
 	if err := tx.Commit(ctx); err != nil {
-		log.Printf("[DB] CreateDocument: failed to commit: %v", err)
+		logger.Error("[DB] CreateDocument: failed to commit: %v", err)
 		return nil, err
 	}
 
-	log.Printf("[DB] CreateDocument: success, docID=%s", doc.ID)
+	logger.Info("[DB] CreateDocument: success, docID=%s", doc.ID)
 	return &doc, nil
 }
 
@@ -564,13 +564,13 @@ func (db *DB) CreateComment(ctx context.Context, docID, userID uuid.UUID, conten
 		&comment.Resolved, &comment.ParentID, &comment.CreatedAt, &comment.UpdatedAt,
 	)
 	if err != nil {
-		log.Printf("[DB] CreateComment: error: %v", err)
+		logger.Error("[DB] CreateComment: error: %v", err)
 		return nil, err
 	}
 	if selectionJSON != nil {
 		json.Unmarshal(selectionJSON, &comment.Selection)
 	}
-	log.Printf("[DB] CreateComment: success, commentID=%s", comment.ID)
+	logger.Info("[DB] CreateComment: success, commentID=%s", comment.ID)
 	return &comment, nil
 }
 
