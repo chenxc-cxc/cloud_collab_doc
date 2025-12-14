@@ -132,11 +132,11 @@ export default function LoginPage() {
                 </div>
 
                 {/* Test credentials hint */}
-                <div className="mt-6 p-4 bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 text-center">
+                {/* <div className="mt-6 p-4 bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 text-center">
                     <p className="text-slate-400 text-sm">
                         <span className="text-slate-300 font-medium">Demo credentials:</span> alice@example.com / password123
                     </p>
-                </div>
+                </div> */}
             </div>
         </div>
     )
