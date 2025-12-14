@@ -218,14 +218,14 @@ export default function DocumentPage() {
                                 <div className="space-y-4">
                                     {/* Permission Selection */}
                                     <div className="flex items-center justify-center gap-4 mb-4">
-                                        <label className="text-sm text-slate-600 dark:text-slate-400">请求权限:</label>
+                                        <label className="text-sm text-slate-600 dark:text-slate-400">Apply for permission:</label>
                                         <select
                                             value={selectedRole}
                                             onChange={(e) => setSelectedRole(e.target.value as 'view' | 'edit')}
                                             className="px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                                         >
-                                            <option value="view">仅阅读</option>
-                                            <option value="edit">可编辑</option>
+                                            <option value="view">Read Only</option>
+                                            <option value="edit">Edit</option>
                                         </select>
                                     </div>
                                     <button
@@ -293,15 +293,15 @@ export default function DocumentPage() {
                     <div className="flex items-center justify-between max-w-6xl mx-auto">
                         <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
                             <Lock className="w-4 h-4" />
-                            <span className="text-sm font-medium">您当前只有阅读权限，无法编辑此文档</span>
+                            <span className="text-sm font-medium">Read only, and you can't edit this document</span>
                         </div>
                         {upgradeRequestStatus === 'sent' ? (
                             <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-sm">
                                 <Check className="w-4 h-4" />
-                                <span>申请已发送，等待审批</span>
+                                <span>Application pending</span>
                             </div>
                         ) : upgradeRequestStatus === 'error' ? (
-                            <span className="text-red-500 text-sm">申请失败，您可能已申请过</span>
+                            <span className="text-red-500 text-sm">Apply for edit permission failed</span>
                         ) : (
                             <button
                                 onClick={handleUpgradeRequest}
@@ -313,7 +313,7 @@ export default function DocumentPage() {
                                 ) : (
                                     <Send className="w-3.5 h-3.5" />
                                 )}
-                                申请编辑权限
+                                Apply for edit permission
                             </button>
                         )}
                     </div>
@@ -333,7 +333,7 @@ export default function DocumentPage() {
                                     ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400'
                                     : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
                                     }`}
-                                title={showOutline ? '隐藏目录' : '显示目录'}
+                                title={showOutline ? 'Hide outline' : 'Show outline'}
                             >
                                 <List className="w-5 h-5" />
                             </button>
