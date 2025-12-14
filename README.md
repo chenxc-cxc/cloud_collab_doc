@@ -49,14 +49,16 @@ This is typically caused by **DNS resolution issues**. Some DNS servers (e.g., 1
 2. If the above works, change your DNS settings:
 
    **Windows:**
+   
    - Open Control Panel → Network and Internet → Network Connections
    - Right-click your connection → Properties → IPv4 → Properties
    - Select "Use the following DNS server addresses":
      - Preferred: `223.5.5.5` (Alibaba DNS)
      - Alternate: `223.6.6.6`
    - Click OK, then run: `ipconfig /flushdns`
-
+   
    **macOS/Linux:**
+   
    ```bash
    # macOS
    sudo networksetup -setdnsservers Wi-Fi 223.5.5.5 223.6.6.6
@@ -64,6 +66,43 @@ This is typically caused by **DNS resolution issues**. Some DNS servers (e.g., 1
    # Linux (temporary)
    echo "nameserver 223.5.5.5" | sudo tee /etc/resolv.conf
    ```
+
+### Troubleshooting: Connection Reset
+
+If DNS resolves successfully but you still get:
+
+```bash
+curl: (35) Recv failure: Connection was reset
+```
+
+This means the connection is being actively blocked at the network layer (firewall/GFW). **Please use VPN or a network with unrestricted access.**
+
+**Diagnosis Steps for reference:**
+
+```bash
+# 1. Check DNS resolution
+nslookup cswuncollabdocs.vercel.app
+# Expected: Returns IP addresses like 216.198.79.3
+
+# 2. View resolved IP (Windows uses nslookup, mac uses dig)
+nslookup cswuncollabdocs.vercel.app
+
+# 3. Try ping
+ping cswuncollabdocs.vercel.app
+
+# 4. Test HTTPS connection
+curl -I https://cswuncollabdocs.vercel.app --connect-timeout 10
+# If "Connection was reset" → Network-level blocking
+```
+
+**Root Cause:**
+
+| Symptom | Cause |
+|---------|-------|
+| DNS timeout | DNS server cannot resolve `*.vercel.app` |
+| Connection reset | IP/SNI blocked by firewall (deep packet inspection) |
+
+
 
 ## Demo
 
