@@ -689,21 +689,38 @@ func (h *Handler) RequestAccess(c *gin.Context) {
 		return
 	}
 
-	// Check if user already has access
+	// Check if user already has access - allow upgrade requests (view -> edit)
 	perm, err := h.db.GetPermission(c.Request.Context(), docID, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
-	if perm != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "You already have access to this document"})
-		return
-	}
 
+	// Parse the requested role from the body first to check if it's an upgrade
 	var req models.CreateAccessRequestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		// Allow empty body - defaults will be used
 		req = models.CreateAccessRequestRequest{}
+	}
+
+	requestedRole := req.RequestedRole
+	if requestedRole == "" {
+		requestedRole = models.RoleView
+	}
+
+	if perm != nil {
+		// User already has permission - check if they're requesting an upgrade
+		if perm.Role == models.RoleOwner || perm.Role == "edit" {
+			// Already has owner or edit permission, no upgrade possible
+			c.JSON(http.StatusConflict, gin.H{"error": "You already have edit access or higher to this document"})
+			return
+		}
+		// User has view permission and is requesting upgrade to edit
+		if requestedRole != "edit" {
+			c.JSON(http.StatusConflict, gin.H{"error": "You already have view access to this document"})
+			return
+		}
+		// Allow the upgrade request
 	}
 
 	accessReq, err := h.db.CreateAccessRequest(c.Request.Context(), docID, user.ID, req.RequestedRole, req.Message)
@@ -778,7 +795,11 @@ func (h *Handler) UpdateAccessRequest(c *gin.Context) {
 
 	// If approved, grant permission
 	if req.Status == models.AccessRequestApproved {
-		role := accessReq.RequestedRole
+		// Use granted_role if provided, otherwise use the originally requested role
+		role := req.GrantedRole
+		if role == "" {
+			role = accessReq.RequestedRole
+		}
 		if role == "" {
 			role = models.RoleView
 		}

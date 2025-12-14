@@ -224,10 +224,10 @@ class ApiClient {
         return this.fetch<AccessRequest[]>('/api/access-requests/pending')
     }
 
-    async updateAccessRequest(requestId: string, status: 'approved' | 'rejected'): Promise<AccessRequest> {
+    async updateAccessRequest(requestId: string, status: 'approved' | 'rejected', grantedRole?: string): Promise<AccessRequest> {
         return this.fetch<AccessRequest>(`/api/access-requests/${requestId}`, {
             method: 'PUT',
-            body: JSON.stringify({ status }),
+            body: JSON.stringify({ status, granted_role: grantedRole }),
         })
     }
 

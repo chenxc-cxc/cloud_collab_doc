@@ -321,10 +321,17 @@ func (db *DB) GetLatestSnapshot(ctx context.Context, docID uuid.UUID) (*models.D
 	return &snapshot, nil
 }
 
-// SaveSnapshot saves a new snapshot for a document
+// SaveSnapshot saves a new snapshot for a document and updates document's updated_at
 func (db *DB) SaveSnapshot(ctx context.Context, docID uuid.UUID, data []byte) (*models.DocSnapshot, error) {
+	// Start a transaction to update both snapshot and document
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	var snapshot models.DocSnapshot
-	err := db.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO doc_snapshots (doc_id, version, snapshot)
 		SELECT $1, COALESCE(MAX(version), 0) + 1, $2
 		FROM doc_snapshots WHERE doc_id = $1
@@ -333,6 +340,17 @@ func (db *DB) SaveSnapshot(ctx context.Context, docID uuid.UUID, data []byte) (*
 	if err != nil {
 		return nil, err
 	}
+
+	// Update document's updated_at timestamp
+	_, err = tx.Exec(ctx, `UPDATE documents SET updated_at = NOW() WHERE id = $1`, docID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
 	return &snapshot, nil
 }
 
@@ -361,11 +379,18 @@ func (db *DB) ListSnapshots(ctx context.Context, docID uuid.UUID) ([]*models.Doc
 	return snapshots, nil
 }
 
-// SaveSnapshotBase64 saves a new snapshot for a document from base64 encoded data
+// SaveSnapshotBase64 saves a new snapshot for a document from base64 encoded data and updates document's updated_at
 func (db *DB) SaveSnapshotBase64(ctx context.Context, docID uuid.UUID, base64Data string) (*models.DocSnapshot, error) {
+	// Start a transaction to update both snapshot and document
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	var snapshot models.DocSnapshot
 	// Use PostgreSQL's decode function to convert base64 to bytea
-	err := db.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO doc_snapshots (doc_id, version, snapshot)
 		SELECT $1, COALESCE(MAX(version), 0) + 1, decode($2, 'base64')
 		FROM doc_snapshots WHERE doc_id = $1
@@ -374,6 +399,17 @@ func (db *DB) SaveSnapshotBase64(ctx context.Context, docID uuid.UUID, base64Dat
 	if err != nil {
 		return nil, err
 	}
+
+	// Update document's updated_at timestamp
+	_, err = tx.Exec(ctx, `UPDATE documents SET updated_at = NOW() WHERE id = $1`, docID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
 	return &snapshot, nil
 }
 

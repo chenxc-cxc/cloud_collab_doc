@@ -199,3 +199,93 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Comment highlight - shown when sidebar is open */
+.comment-highlight {
+  background-color: rgba(251, 191, 36, 0.15);
+  border-bottom: 2px solid #f59e0b;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-radius: 2px;
+}
+
+.comment-highlight:hover {
+  background-color: rgba(251, 191, 36, 0.35);
+}
+
+/* Comment marker icon - shown when sidebar is closed */
+.comment-marker {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  margin-left: 2px;
+  margin-top: -0.5rem;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+  user-select: none;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.comment-marker:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* Comment anchor - invisible element that flows with document text */
+.comment-anchor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  vertical-align: baseline;
+}
+
+/* Comment mirror - placeholder that pushes comment cards into position */
+.comment-mirror {
+  transition: height 0.15s ease-out;
+  pointer-events: none;
+}
+
+/* Active comment highlight animation */
+.comment-active {
+  animation: comment-pulse 0.6s ease-in-out;
+}
+
+@keyframes comment-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+  }
+
+  50% {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+  }
+}
+
+/* Slide-up animation for comments panel */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.2s ease-out;
+}

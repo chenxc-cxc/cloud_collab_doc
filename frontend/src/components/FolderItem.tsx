@@ -77,8 +77,11 @@ export function FolderItem({ folder, onClick, onUpdated }: FolderItemProps) {
     const formatDate = (date: string) => {
         return new Date(date).toLocaleDateString('en-US', {
             month: 'short',
-            day: 'numeric',
-            year: 'numeric'
+            day: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
         })
     }
 
@@ -103,7 +106,7 @@ export function FolderItem({ folder, onClick, onUpdated }: FolderItemProps) {
                         disabled={isSaving || !newName.trim()}
                         className="px-3 py-1.5 bg-primary-500 hover:bg-primary-600 text-white text-sm rounded-lg font-medium transition-colors disabled:opacity-50"
                     >
-                        {isSaving ? '保存中...' : '保存'}
+                        {isSaving ? 'Saving...' : 'Saved'}
                     </button>
                     <button
                         type="button"
@@ -218,14 +221,14 @@ export function FolderItem({ folder, onClick, onUpdated }: FolderItemProps) {
 
                             {/* Title */}
                             <h3 className="text-xl font-semibold text-center text-slate-900 dark:text-white mb-2">
-                                确认删除文件夹
+                                Confirm deletion of the folder
                             </h3>
 
                             {/* Description */}
                             <p className="text-center text-slate-500 dark:text-slate-400 mb-6">
-                                <span className="text-red-500 font-medium">此操作无法撤销！</span>
+                                <span className="text-red-500 font-medium">This action cannot be undone!</span>
                                 <br />
-                                文件夹内的所有文档和子文件夹将被永久删除。
+                                All documents and subfolders within the folder will be permanently deleted.
                             </p>
 
                             {/* Folder Info */}
@@ -252,7 +255,7 @@ export function FolderItem({ folder, onClick, onUpdated }: FolderItemProps) {
                                     onClick={closeDeleteModal}
                                     className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                                 >
-                                    取消
+                                    Cancel
                                 </button>
                                 <button
                                     onClick={confirmDelete}
@@ -262,12 +265,12 @@ export function FolderItem({ folder, onClick, onUpdated }: FolderItemProps) {
                                     {isDeleting ? (
                                         <>
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            删除中...
+                                            Deleting...
                                         </>
                                     ) : (
                                         <>
                                             <Trash2 className="w-4 h-4" />
-                                            确认删除
+                                            Confirm Deletion
                                         </>
                                     )}
                                 </button>

@@ -10,6 +10,7 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
+import { CommentHighlight } from '@/extensions/CommentHighlight'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { useStore, getRandomColor } from '@/lib/store'
@@ -135,6 +136,7 @@ export function useCollaboration(
             Placeholder.configure({
                 placeholder: 'Start writing your document...',
             }),
+            CommentHighlight,
             ...(ydoc && provider ? [
                 Collaboration.configure({
                     document: ydoc,

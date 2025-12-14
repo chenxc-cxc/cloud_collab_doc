@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FolderTree, Folder, FolderOpen, ChevronRight, ChevronDown, Home, FileText, List, ChevronLeft } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { FolderTreeNode } from '@/types'
+import type { FolderTreeNode, Document } from '@/types'
 
 interface FolderTreeSidebarProps {
     isOpen: boolean
@@ -21,8 +21,39 @@ export default function FolderTreeSidebar({
 }: FolderTreeSidebarProps) {
     const router = useRouter()
     const [tree, setTree] = useState<FolderTreeNode[]>([])
+    const [rootDocuments, setRootDocuments] = useState<Document[]>([])
     const [loading, setLoading] = useState(true)
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
+        // Load from localStorage on mount
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('expandedFolders')
+            if (saved) {
+                try {
+                    return new Set(JSON.parse(saved))
+                } catch {
+                    return new Set()
+                }
+            }
+        }
+        return new Set()
+    })
+    const [rootExpanded, setRootExpanded] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('rootExpanded')
+            return saved !== 'false' // Default to true
+        }
+        return true
+    })
+
+    // Save expandedFolders to localStorage when it changes
+    useEffect(() => {
+        localStorage.setItem('expandedFolders', JSON.stringify(Array.from(expandedFolders)))
+    }, [expandedFolders])
+
+    // Save rootExpanded to localStorage when it changes
+    useEffect(() => {
+        localStorage.setItem('rootExpanded', String(rootExpanded))
+    }, [rootExpanded])
 
     useEffect(() => {
         loadTree()
@@ -62,8 +93,12 @@ export default function FolderTreeSidebar({
     const loadTree = async () => {
         try {
             setLoading(true)
-            const data = await api.getFolderTree()
-            setTree(data || [])
+            const [treeData, rootContents] = await Promise.all([
+                api.getFolderTree(),
+                api.getFolderContents() // Get root folder contents including documents
+            ])
+            setTree(treeData || [])
+            setRootDocuments(rootContents.documents || [])
         } catch (error) {
             console.error('Failed to load folder tree:', error)
         } finally {
@@ -132,9 +167,9 @@ export default function FolderTreeSidebar({
                     <span className="text-sm truncate flex-1">{node.name}</span>
 
                     {/* Document count */}
-                    {node.doc_count > 0 && (
+                    {/* {node.doc_count > 0 && (
                         <span className="text-xs text-slate-400 flex-shrink-0">{node.doc_count}</span>
-                    )}
+                    )} */}
                 </div>
 
                 {/* Children and Documents */}
@@ -156,11 +191,11 @@ export default function FolderTreeSidebar({
             <div
                 key={doc.id}
                 className="flex items-center gap-1 py-1.5 px-2 rounded-lg cursor-pointer transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400"
-                style={{ paddingLeft: `${(level + 2) * 12}px` }}
+                style={{ paddingLeft: `${(level + 1) * 12}px` }}
                 onClick={() => router.push(`/doc/${doc.id}`)}
             >
                 {/* Spacer for alignment with folders */}
-                <div className="w-4 h-4 flex-shrink-0" />
+                <div className="w-[18px] h-4 flex-shrink-0" />
 
                 {/* Document icon */}
                 <FileText className="w-4 h-4 text-primary-500 flex-shrink-0" />
@@ -180,12 +215,12 @@ export default function FolderTreeSidebar({
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
                 <div className="flex items-center gap-2">
                     <FolderTree className="w-4 h-4 text-slate-500" />
-                    <span className="font-medium text-slate-900 dark:text-white text-sm">文件夹</span>
+                    <span className="font-medium text-slate-900 dark:text-white text-sm">Folder Tree</span>
                 </div>
                 <button
                     onClick={onToggle}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                    title="隐藏文件夹树"
+                    title="Hide folder tree"
                 >
                     <ChevronLeft className="w-4 h-4 text-slate-500" />
                 </button>
@@ -199,28 +234,51 @@ export default function FolderTreeSidebar({
                     </div>
                 ) : (
                     <>
-                        {/* Root folder */}
-                        <div
-                            className={`flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${!currentFolderId
-                                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                                : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
-                                }`}
-                            onClick={handleRootClick}
-                        >
-                            <Home className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                            <span className="text-sm font-medium">我的文档</span>
-                        </div>
+                        {/* Root folder with expand/collapse */}
+                        <div>
+                            <div
+                                className={`flex items-center gap-1 py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${!currentFolderId
+                                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
+                                    }`}
+                                onClick={handleRootClick}
+                            >
+                                {/* Expand/Collapse toggle for root */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        setRootExpanded(!rootExpanded)
+                                    }}
+                                    className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-600 ${(tree.length === 0 && rootDocuments.length === 0) ? 'invisible' : ''}`}
+                                >
+                                    {rootExpanded ? (
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                    ) : (
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                    )}
+                                </button>
+                                <Home className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                                <span className="text-sm font-medium">My documents</span>
+                            </div>
 
-                        {/* Folder tree */}
-                        {tree.length === 0 ? (
-                            <div className="px-2 py-4 text-center text-slate-400 text-xs">
-                                暂无文件夹
-                            </div>
-                        ) : (
-                            <div className="mt-1">
-                                {tree.map(node => renderNode(node))}
-                            </div>
-                        )}
+                            {/* Root contents (folders + documents) */}
+                            {rootExpanded && (
+                                <div className="mt-1">
+                                    {/* Folders */}
+                                    {tree.map(node => renderNode(node))}
+
+                                    {/* Root level documents */}
+                                    {rootDocuments.map(doc => renderDocument(doc, 0))}
+
+                                    {/* Empty state */}
+                                    {tree.length === 0 && rootDocuments.length === 0 && (
+                                        <div className="px-2 py-4 text-center text-slate-400 text-xs">
+                                            No Document
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
             </div>
@@ -231,7 +289,7 @@ export default function FolderTreeSidebar({
                     onClick={loadTree}
                     className="w-full py-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
                 >
-                    刷新文件夹树
+                    Refresh Folder Tree
                 </button>
             </div>
         </aside>

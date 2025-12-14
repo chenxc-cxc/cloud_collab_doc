@@ -55,7 +55,7 @@ export default function OutlineSidebar({ editor, isOpen, onToggle }: OutlineSide
                     items.push({
                         id,
                         level: node.attrs.level,
-                        text: node.textContent || '(无标题)',
+                        text: node.textContent || '(No title)',
                         pos,
                     })
                 }
@@ -114,12 +114,12 @@ export default function OutlineSidebar({ editor, isOpen, onToggle }: OutlineSide
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-2">
                     <List className="w-4 h-4 text-slate-500" />
-                    <span className="font-medium text-slate-900 dark:text-white text-sm">目录</span>
+                    <span className="font-medium text-slate-900 dark:text-white text-sm">Outline</span>
                 </div>
                 <button
                     onClick={onToggle}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-                    title="隐藏目录"
+                    title="Hide outline"
                 >
                     <ChevronLeft className="w-4 h-4 text-slate-500" />
                 </button>
@@ -129,11 +129,11 @@ export default function OutlineSidebar({ editor, isOpen, onToggle }: OutlineSide
             <div className="overflow-y-auto flex-1 pb-4">
                 {headings.length === 0 ? (
                     <div className="px-4 py-8 text-center">
-                        <p className="text-slate-400 text-sm">暂无标题</p>
+                        <p className="text-slate-400 text-sm">No title</p>
                         <p className="mt-2 text-xs text-slate-400">
-                            添加 H1、H2、H3 等标题
+                            Add H1, H2, H3, etc. titles
                             <br />
-                            来自动生成目录
+                            To automatically generate a table of contents
                         </p>
                     </div>
                 ) : (

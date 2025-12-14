@@ -6,12 +6,14 @@ import { ArrowLeft, Users, Share2, MessageSquare, History, Settings, Lock, FileQ
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useCollaboration } from '@/hooks/useCollaboration'
+import { useCommentResolver } from '@/lib/useCommentResolver'
 import Editor from '@/components/Editor'
 import Toolbar from '@/components/Toolbar'
 import CollaboratorsList from '@/components/CollaboratorsList'
 import CommentsPanel from '@/components/CommentsPanel'
 import ShareModal from '@/components/ShareModal'
 import OutlineSidebar from '@/components/OutlineSidebar'
+import SelectionBubbleMenu from '@/components/SelectionBubbleMenu'
 import type { Document, Comment } from '@/types'
 
 export default function DocumentPage() {
@@ -35,18 +37,69 @@ export default function DocumentPage() {
     const [showComments, setShowComments] = useState(false)
     const [showShare, setShowShare] = useState(false)
     const [showOutline, setShowOutline] = useState(true)
+    const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
 
     const [permission, setPermission] = useState<string>('view')
     const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
+    const [selectedRole, setSelectedRole] = useState<'view' | 'edit'>('view')
+    const [upgradeRequestStatus, setUpgradeRequestStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle')
 
     const {
         editor,
         provider,
+        ydoc,
         isConnected,
         collaborators,
     } = useCollaboration(docId, currentUser, permission)
 
+    // Comment position resolver (uses Yjs RelativePosition for stable anchors)
+    const commentResolver = useCommentResolver(editor, ydoc, comments)
+
     const [originalTitle, setOriginalTitle] = useState<string>('')
+
+    // Sync comments and sidebar state with ProseMirror plugin
+    useEffect(() => {
+        if (!editor) return
+
+        // Set click callback in plugin storage
+        editor.storage.commentHighlight.onCommentClick = (commentId: string) => {
+            // Open sidebar and set active comment
+            setShowComments(true)
+            setActiveCommentId(commentId)
+
+            // Clear the active highlight after a delay
+            setTimeout(() => {
+                setActiveCommentId(null)
+            }, 3000)
+        }
+
+        // Set the resolver function for getting mapped positions
+        // This is stable because commentResolver uses refs internally
+        editor.storage.commentHighlight.getMappedCommentPositions = commentResolver.resolveAllPositions
+    }, [editor, commentResolver.resolveAllPositions])
+
+    // Update decorations when comments or sidebar state changes
+    useEffect(() => {
+        if (!editor) return
+        // This ensures decorations are applied whenever any dependency changes
+        // including when editor first becomes ready
+        editor.commands.setCommentDecorations(comments, showComments)
+    }, [editor, comments, showComments])
+
+    // Also trigger decoration update when editor becomes ready
+    // (in case comments were loaded before editor was initialized)
+    useEffect(() => {
+        if (!editor) return
+        // Small delay to ensure editor is fully ready
+        const timer = setTimeout(() => {
+            editor.commands.setCommentDecorations(comments, showComments)
+        }, 100)
+        return () => clearTimeout(timer)
+    }, [editor]) // Only depends on editor - run when editor becomes available
+
+    // Note: We previously had auto-deletion of comments when text was deleted,
+    // but this was too aggressive and caused issues with copy-paste operations.
+    // Users should manually delete comments if needed.
 
     useEffect(() => {
         loadDocument()
@@ -93,7 +146,27 @@ export default function DocumentPage() {
     const addComment = async (content: string, selection?: { anchor: number; head: number }) => {
         try {
             const comment = await api.createComment(docId, { content, selection })
-            setComments(prev => [comment, ...prev])
+            // Add current user info to the comment since backend doesn't return it
+            const commentWithUser: Comment = {
+                ...comment,
+                user: currentUser ? {
+                    id: currentUser.id,
+                    email: currentUser.email,
+                    name: currentUser.name,
+                    avatar_url: currentUser.avatar_url,
+                    created_at: currentUser.created_at,
+                    updated_at: currentUser.updated_at
+                } : undefined
+            }
+
+            // Cache the new comment's relative position
+            if (selection) {
+                const from = Math.min(selection.anchor, selection.head)
+                const to = Math.max(selection.anchor, selection.head)
+                commentResolver.cacheNewComment(comment.id, from, to)
+            }
+
+            setComments(prev => [commentWithUser, ...prev])
         } catch (error) {
             console.error('Failed to add comment:', error)
         }
@@ -113,7 +186,7 @@ export default function DocumentPage() {
         const handleRequestAccess = async () => {
             setRequestStatus('loading')
             try {
-                await api.requestAccess(docId)
+                await api.requestAccess(docId, selectedRole)
                 setRequestStatus('sent')
             } catch (err) {
                 console.error('Failed to request access:', err)
@@ -142,18 +215,32 @@ export default function DocumentPage() {
                                     <span>Request sent! The document owner will review your request.</span>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={handleRequestAccess}
-                                    disabled={requestStatus === 'loading'}
-                                    className="flex items-center justify-center gap-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-400 text-white rounded-lg font-medium transition-colors mb-4"
-                                >
-                                    {requestStatus === 'loading' ? (
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                        <Send className="w-5 h-5" />
-                                    )}
-                                    Request Access
-                                </button>
+                                <div className="space-y-4">
+                                    {/* Permission Selection */}
+                                    <div className="flex items-center justify-center gap-4 mb-4">
+                                        <label className="text-sm text-slate-600 dark:text-slate-400">请求权限:</label>
+                                        <select
+                                            value={selectedRole}
+                                            onChange={(e) => setSelectedRole(e.target.value as 'view' | 'edit')}
+                                            className="px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            <option value="view">仅阅读</option>
+                                            <option value="edit">可编辑</option>
+                                        </select>
+                                    </div>
+                                    <button
+                                        onClick={handleRequestAccess}
+                                        disabled={requestStatus === 'loading'}
+                                        className="flex items-center justify-center gap-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-primary-400 text-white rounded-lg font-medium transition-colors"
+                                    >
+                                        {requestStatus === 'loading' ? (
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <Send className="w-5 h-5" />
+                                        )}
+                                        Request Access
+                                    </button>
+                                </div>
                             )}
 
                             {requestStatus === 'error' && (
@@ -186,8 +273,53 @@ export default function DocumentPage() {
 
     const canEdit = permission === 'owner' || permission === 'edit'
 
+    // Handle upgrade request for users with view-only permission
+    const handleUpgradeRequest = async () => {
+        setUpgradeRequestStatus('loading')
+        try {
+            await api.requestAccess(docId, 'edit')
+            setUpgradeRequestStatus('sent')
+        } catch (err) {
+            console.error('Failed to request edit access:', err)
+            setUpgradeRequestStatus('error')
+        }
+    }
+
     return (
         <div className="min-h-screen flex flex-col">
+            {/* View-only Banner */}
+            {permission === 'view' && (
+                <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 px-4 py-2">
+                    <div className="flex items-center justify-between max-w-6xl mx-auto">
+                        <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                            <Lock className="w-4 h-4" />
+                            <span className="text-sm font-medium">您当前只有阅读权限，无法编辑此文档</span>
+                        </div>
+                        {upgradeRequestStatus === 'sent' ? (
+                            <div className="flex items-center gap-1 text-green-600 dark:text-green-400 text-sm">
+                                <Check className="w-4 h-4" />
+                                <span>申请已发送，等待审批</span>
+                            </div>
+                        ) : upgradeRequestStatus === 'error' ? (
+                            <span className="text-red-500 text-sm">申请失败，您可能已申请过</span>
+                        ) : (
+                            <button
+                                onClick={handleUpgradeRequest}
+                                disabled={upgradeRequestStatus === 'loading'}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-400 text-white text-sm font-medium rounded-lg transition-colors"
+                            >
+                                {upgradeRequestStatus === 'loading' ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Send className="w-3.5 h-3.5" />
+                                )}
+                                申请编辑权限
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-700" id="doc-header">
                 <div className="w-full px-4">
@@ -273,14 +405,24 @@ export default function DocumentPage() {
                 onToggle={() => setShowOutline(!showOutline)}
             />
 
-            {/* Main content */}
-            <main className={`flex-1 flex transition-all duration-300 ${showOutline ? 'ml-64' : 'ml-0'}`}>
-                {/* Editor - Full width */}
-                <div className={`flex-1 transition-all duration-300 ${showComments ? 'mr-80' : ''}`}>
-                    <div className="h-full px-8 py-6">
-                        <div className="h-full bg-white dark:bg-slate-800/50 min-h-[calc(100vh-10rem)]">
+            {/* Main content - Shared scroll container for Editor and Comments */}
+            <main
+                className={`flex-1 flex transition-all duration-300 overflow-y-auto ${showOutline ? 'ml-64' : 'ml-0'}`}
+                style={{ height: 'calc(100vh - var(--header-height, 120px))' }}
+            >
+                {/* Editor area - expands to fill */}
+                <div className={`flex-1 transition-all duration-300`}>
+                    <div className="px-8 py-6">
+                        <div className="bg-white dark:bg-slate-800/50 min-h-[calc(100vh-10rem)]">
                             {editor ? (
-                                <Editor editor={editor} />
+                                <>
+                                    <SelectionBubbleMenu
+                                        editor={editor}
+                                        onAddComment={() => setShowComments(true)}
+                                        canComment={permission !== 'view'}
+                                    />
+                                    <Editor editor={editor} />
+                                </>
                             ) : (
                                 <div className="flex items-center justify-center h-96">
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
@@ -290,13 +432,16 @@ export default function DocumentPage() {
                     </div>
                 </div>
 
-                {/* Comments panel */}
+                {/* Comments sidebar - shares scroll with editor */}
                 {showComments && (
                     <CommentsPanel
                         comments={comments}
                         onAddComment={addComment}
                         onClose={() => setShowComments(false)}
                         canComment={permission !== 'view'}
+                        editor={editor}
+                        activeCommentId={activeCommentId}
+                        commentResolver={commentResolver}
                     />
                 )}
             </main>

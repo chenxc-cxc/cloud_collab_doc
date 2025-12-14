@@ -225,7 +225,8 @@ type CreateAccessRequestRequest struct {
 
 // UpdateAccessRequestRequest represents a request to update an access request status
 type UpdateAccessRequestRequest struct {
-	Status string `json:"status" binding:"required,oneof=approved rejected"`
+	Status      string `json:"status" binding:"required,oneof=approved rejected"`
+	GrantedRole string `json:"granted_role,omitempty"` // Optional: override the requested role when approving
 }
 
 // Folder represents a folder for organizing documents

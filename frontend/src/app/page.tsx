@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FileText, Plus, Users, Clock, ChevronRight, Trash2, FolderPlus, Home, AlertTriangle, X, FolderTree } from 'lucide-react'
+import { FileText, Plus, Users, Clock, ChevronRight, Trash2, FolderPlus, Home, AlertTriangle, X, FolderTree, LayoutGrid, List, Folder as FolderIcon, CalendarPlus, Edit3 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { AuthGuard } from '@/components/AuthGuard'
@@ -29,6 +29,21 @@ export default function HomePage() {
     const [documentToDelete, setDocumentToDelete] = useState<Document | null>(null)
     const [deleting, setDeleting] = useState(false)
     const [showFolderTree, setShowFolderTree] = useState(true)
+    const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+
+    // Load view mode preference from localStorage
+    useEffect(() => {
+        const savedViewMode = localStorage.getItem('viewMode') as 'card' | 'list' | null
+        if (savedViewMode) {
+            setViewMode(savedViewMode)
+        }
+    }, [])
+
+    // Save view mode preference to localStorage
+    const handleViewModeChange = (mode: 'card' | 'list') => {
+        setViewMode(mode)
+        localStorage.setItem('viewMode', mode)
+    }
 
     // Read folder from URL on initial load
     useEffect(() => {
@@ -174,13 +189,15 @@ export default function HomePage() {
         }
     }
 
+    // using 24 hours
     const formatDate = (date: string) => {
         return new Date(date).toLocaleDateString('en-US', {
             month: 'short',
-            day: 'numeric',
+            day: '2-digit',
             year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            hour12: false
         })
     }
 
@@ -237,7 +254,7 @@ export default function HomePage() {
                                     Collaborative Docs
                                 </h1>
                                 <p className="text-slate-500 dark:text-slate-400 mt-1">
-                                    Welcome back, {currentUser?.name || 'User'}
+                                    Welcome, {currentUser?.name || 'User'}
                                 </p>
                             </div>
                         </div>
@@ -327,9 +344,35 @@ export default function HomePage() {
 
                     {/* Content List */}
                     <div className="space-y-4">
-                        <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300">
-                            {currentFolderId ? contents?.folder?.name || 'Folder' : 'Your Documents'}
-                        </h2>
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-semibold text-slate-700 dark:text-slate-300">
+                                {currentFolderId ? contents?.folder?.name || 'Folder' : 'Your Documents'}
+                            </h2>
+
+                            {/* View Toggle */}
+                            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                                <button
+                                    onClick={() => handleViewModeChange('card')}
+                                    className={`p-1.5 rounded-md transition-colors ${viewMode === 'card'
+                                        ? 'bg-white dark:bg-slate-600 text-primary-600 dark:text-primary-400 shadow-sm'
+                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                                        }`}
+                                    title="卡片视图"
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => handleViewModeChange('list')}
+                                    className={`p-1.5 rounded-md transition-colors ${viewMode === 'list'
+                                        ? 'bg-white dark:bg-slate-600 text-primary-600 dark:text-primary-400 shadow-sm'
+                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                                        }`}
+                                    title="列表视图"
+                                >
+                                    <List className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
 
                         {folders.length === 0 && documents.length === 0 ? (
                             <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
@@ -341,7 +384,7 @@ export default function HomePage() {
                                     Create your first {currentFolderId ? 'item' : 'document'} to get started
                                 </p>
                             </div>
-                        ) : (
+                        ) : viewMode === 'card' ? (
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                 {/* Folders first */}
                                 {folders.map((folder) => (
@@ -389,14 +432,101 @@ export default function HomePage() {
                                                 <span>{doc.owner?.name || 'Unknown'}</span>
                                             </div>
                                             <div className="flex items-center gap-1">
-                                                <Clock className="w-4 h-4" />
-                                                <span>{formatDate(doc.updated_at)}</span>
+                                                <CalendarPlus className="w-4 h-4" />
+                                                <span>{formatDate(doc.created_at)}</span>
                                             </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1 text-sm text-slate-400 dark:text-slate-500 mt-2">
+                                            <Edit3 className="w-3.5 h-3.5" />
+                                            <span>Updated at {formatDate(doc.updated_at)}</span>
                                         </div>
 
                                         <div className="mt-4 flex items-center text-primary-500 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                                             Open document
                                             <ChevronRight className="w-4 h-4 ml-1" />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            /* List View */
+                            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                {/* Table Header */}
+                                <div className="grid grid-cols-12 gap-4 px-4 py-3 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-600 text-sm font-medium text-slate-600 dark:text-slate-400">
+                                    <div className="col-span-3">Name</div>
+                                    <div className="col-span-1">Owner</div>
+                                    <div className="col-span-2">Permission</div>
+                                    <div className="col-span-3">Created At</div>
+                                    <div className="col-span-2">Updated At</div>
+                                    <div className="col-span-1"></div>
+                                </div>
+
+                                {/* Folders */}
+                                {folders.map((folder) => (
+                                    <div
+                                        key={folder.id}
+                                        onClick={() => navigateToFolder(folder)}
+                                        className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
+                                    >
+                                        <div className="col-span-3 flex items-center gap-3">
+                                            <FolderIcon className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                                            <span className="font-medium text-slate-900 dark:text-white truncate">{folder.name}</span>
+                                        </div>
+                                        <div className="col-span-1 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {currentUser?.name || '-'}
+                                        </div>
+                                        <div className="col-span-2 flex items-center">
+                                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
+                                                owner
+                                            </span>
+                                        </div>
+                                        <div className="col-span-3 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {formatDate(folder.created_at)}
+                                        </div>
+                                        <div className="col-span-2 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {formatDate(folder.updated_at)}
+                                        </div>
+                                        <div className="col-span-1 flex items-center justify-end">
+                                            <ChevronRight className="w-4 h-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Documents */}
+                                {documents.map((doc) => (
+                                    <div
+                                        key={doc.id}
+                                        onClick={() => router.push(`/doc/${doc.id}`)}
+                                        className="grid grid-cols-12 gap-4 px-4 py-3 border-b border-slate-100 dark:border-slate-700 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-700/30 cursor-pointer transition-colors group"
+                                    >
+                                        <div className="col-span-3 flex items-center gap-3">
+                                            <FileText className="w-5 h-5 text-primary-500 flex-shrink-0" />
+                                            <span className="font-medium text-slate-900 dark:text-white truncate">{doc.title}</span>
+                                        </div>
+                                        <div className="col-span-1 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {doc.owner?.name || 'Unknown'}
+                                        </div>
+                                        <div className="col-span-2 flex items-center">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRoleColor(doc.permission || 'view')}`}>
+                                                {doc.permission}
+                                            </span>
+                                        </div>
+                                        <div className="col-span-3 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {formatDate(doc.created_at)}
+                                        </div>
+                                        <div className="col-span-2 flex items-center text-sm text-slate-500 dark:text-slate-400">
+                                            {formatDate(doc.updated_at)}
+                                        </div>
+                                        <div className="col-span-1 flex items-center justify-end">
+                                            {doc.permission === 'owner' && (
+                                                <button
+                                                    onClick={(e) => openDeleteModal(e, doc)}
+                                                    className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -431,12 +561,12 @@ export default function HomePage() {
 
                             {/* Title */}
                             <h3 className="text-xl font-semibold text-center text-slate-900 dark:text-white mb-2">
-                                确认删除文档
+                                Confirm Document Deletion
                             </h3>
 
                             {/* Description */}
                             <p className="text-center text-slate-500 dark:text-slate-400 mb-6">
-                                此操作无法撤销，文档将被永久删除。
+                                This action cannot be undone, the document will be permanently deleted.
                             </p>
 
                             {/* Document Info */}
@@ -469,7 +599,7 @@ export default function HomePage() {
                                     onClick={closeDeleteModal}
                                     className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
                                 >
-                                    取消
+                                    Cancle
                                 </button>
                                 <button
                                     onClick={confirmDelete}
@@ -479,12 +609,12 @@ export default function HomePage() {
                                     {deleting ? (
                                         <>
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            删除中...
+                                            Deleting...
                                         </>
                                     ) : (
                                         <>
                                             <Trash2 className="w-4 h-4" />
-                                            确认删除
+                                            Confirm Deletion
                                         </>
                                     )}
                                 </button>
