@@ -1097,29 +1097,8 @@ func (db *DB) GetFolderTree(ctx context.Context, ownerID uuid.UUID) ([]*models.F
 	}
 
 	// Also fetch root-level documents (no folder)
-	rootDocRows, err := db.pool.Query(ctx, `
-		SELECT d.id, d.title, d.owner_id, d.folder_id, d.created_at, d.updated_at
-		FROM documents d
-		JOIN document_permissions dp ON d.id = dp.doc_id AND dp.user_id = $1
-		WHERE d.folder_id IS NULL
-		ORDER BY d.title ASC
-	`, ownerID)
-	if err != nil {
-		return nil, err
-	}
-	defer rootDocRows.Close()
-
-	var rootDocs []*models.Document
-	for rootDocRows.Next() {
-		var doc models.Document
-		err := rootDocRows.Scan(
-			&doc.ID, &doc.Title, &doc.OwnerID, &doc.FolderID, &doc.CreatedAt, &doc.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		rootDocs = append(rootDocs, &doc)
-	}
+	// Root documents are not currently included in the folder tree structure
+	// They should be fetched separately or this function needs to return a more complex structure
 
 	// Recursively attach documents to folder nodes
 	attachDocumentsToTree(tree, folderDocs)

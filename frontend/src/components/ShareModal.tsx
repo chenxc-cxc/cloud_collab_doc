@@ -18,12 +18,6 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
     const [role, setRole] = useState<PermissionRole>('edit')
     const [copied, setCopied] = useState(false)
     const [processingRequest, setProcessingRequest] = useState<string | null>(null)
-    const [testUsers, setTestUsers] = useState([
-        { id: '11111111-1111-1111-1111-111111111111', email: 'alice@example.com', name: 'Alice' },
-        { id: '22222222-2222-2222-2222-222222222222', email: 'bob@example.com', name: 'Bob' },
-        { id: '33333333-3333-3333-3333-333333333333', email: 'charlie@example.com', name: 'Charlie' },
-    ])
-
     useEffect(() => {
         loadData()
     }, [docId])
@@ -32,7 +26,7 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
         try {
             const [perms, requests] = await Promise.all([
                 api.listPermissions(docId),
-                api.listAccessRequests(docId).catch(() => []) // May fail if not owner
+                api.listAccessRequests(docId).catch(() => [])
             ])
             setPermissions(perms)
             setAccessRequests(requests)
@@ -85,8 +79,6 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
         }
     }
 
-
-
     const copyLink = () => {
         const url = `${window.location.origin}/doc/${docId}`
         navigator.clipboard.writeText(url)
@@ -102,11 +94,6 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
             default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
         }
     }
-
-    // Filter out users who already have access
-    const availableUsers = testUsers.filter(
-        user => !permissions.some(p => p.user_id === user.id)
-    )
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in">
@@ -151,36 +138,56 @@ export default function ShareModal({ docId, onClose }: ShareModalProps) {
                     </div>
 
                     {/* Add user (development) */}
-                    {availableUsers.length > 0 && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                                Add people (Test users)
-                            </label>
-                            <div className="flex gap-2 mb-2">
+                    {/* Add people by email */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Add people
+                        </label>
+                        <div className="flex flex-col gap-3">
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="Enter email address"
+                                className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && email) {
+                                        // We need to implement lookup by email or invite
+                                        // For now, let's just log it or show a temporary alert
+                                        // api.addPermissionByEmail(docId, email, role)
+                                        console.log('Invite email:', email, role)
+                                    }
+                                }}
+                            />
+                            <div className="flex gap-2 justify-end">
                                 <select
                                     value={role}
                                     onChange={(e) => setRole(e.target.value as PermissionRole)}
-                                    className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg"
+                                    className="px-3 py-2 text-sm bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
                                 >
                                     <option value="edit">Can edit</option>
                                     <option value="comment">Can comment</option>
                                     <option value="view">Can view</option>
                                 </select>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {availableUsers.map((user) => (
-                                    <button
-                                        key={user.id}
-                                        onClick={() => addPermission(user.id)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-sm rounded-lg transition-colors"
-                                    >
-                                        <UserPlus className="w-3.5 h-3.5" />
-                                        {user.name}
-                                    </button>
-                                ))}
+                                <button
+                                    onClick={() => {
+                                        if (email) {
+                                            // This functionality might need backend support for looking up user by email
+                                            // For now, we'll keep the UI but maybe notify it's not fully implemented if backend is missing
+                                            // Or if you want to keep using ID, we can't.
+
+                                            alert('Email invitation is not yet fully implemented in the backend (needs lookup by email).')
+                                        }
+                                    }}
+                                    disabled={!email}
+                                    className="px-4 py-2 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                                >
+                                    <UserPlus className="w-4 h-4" />
+                                    <span>Invite</span>
+                                </button>
                             </div>
                         </div>
-                    )}
+                    </div>
 
                     {/* Current permissions */}
                     <div>
