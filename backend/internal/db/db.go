@@ -62,17 +62,21 @@ func (db *DB) GetUser(ctx context.Context, id uuid.UUID) (*models.User, error) {
 
 // GetUserByEmail retrieves a user by email
 func (db *DB) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	log.Printf("[DB] GetUserByEmail: querying email=%s", email)
 	var user models.User
 	err := db.pool.QueryRow(ctx, `
 		SELECT id, email, COALESCE(password_hash, ''), name, COALESCE(avatar_url, ''), created_at, updated_at
 		FROM users WHERE email = $1
 	`, email).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	if err == pgx.ErrNoRows {
+		log.Printf("[DB] GetUserByEmail: no user found for email=%s", email)
 		return nil, nil
 	}
 	if err != nil {
+		log.Printf("[DB] GetUserByEmail: query error: %v", err)
 		return nil, err
 	}
+	log.Printf("[DB] GetUserByEmail: found user id=%s", user.ID)
 	return &user, nil
 }
 

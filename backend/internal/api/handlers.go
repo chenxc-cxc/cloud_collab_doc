@@ -182,29 +182,35 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[API] Login: attempting login for email=%s", req.Email)
 	user, err := h.db.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		log.Printf("[API] Login: database error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
 		return
 	}
 
 	if user == nil {
+		log.Printf("[API] Login: user not found for email=%s", req.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
 	// Check password
 	if !auth.CheckPassword(req.Password, user.PasswordHash) {
+		log.Printf("[API] Login: invalid password for email=%s", req.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
 	token, err := auth.GenerateToken(user)
 	if err != nil {
+		log.Printf("[API] Login: failed to generate token: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
+	log.Printf("[API] Login: success for email=%s", req.Email)
 	c.JSON(http.StatusOK, models.LoginResponse{
 		Token: token,
 		User:  user,
