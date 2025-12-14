@@ -508,12 +508,15 @@ func (h *Handler) CreateComment(c *gin.Context) {
 		parentID = &id
 	}
 
+	log.Printf("[API] CreateComment: docID=%s, userID=%s, content=%s", docID, user.ID, req.Content)
 	comment, err := h.db.CreateComment(c.Request.Context(), docID, user.ID, req.Content, req.Selection, parentID)
 	if err != nil {
+		log.Printf("[API] CreateComment: error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create comment"})
 		return
 	}
 
+	log.Printf("[API] CreateComment: success, commentID=%s", comment.ID)
 	c.JSON(http.StatusCreated, comment)
 }
 
