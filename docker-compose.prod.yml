@@ -1,0 +1,54 @@
+# =============================================================================
+# Docker Compose - 生产环境模拟
+# =============================================================================
+# 用途: 在本地模拟生产环境配置，使用外部托管服务
+#
+# 使用方式:
+#   1. 复制 .env.production.example 为 .env.production
+#   2. 填写实际的生产环境配置
+#   3. 启动: docker-compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# 注意: 
+#   - 数据库使用 Supabase（不在此 compose 中）
+#   - Redis 使用 Upstash 或 Railway Redis（不在此 compose 中）
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Go API 服务
+  # ---------------------------------------------------------------------------
+  api-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.api
+    container_name: collab-api-prod
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 8080
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://your-app.vercel.app}
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Y-WebSocket 实时协作服务
+  # ---------------------------------------------------------------------------
+  y-websocket:
+    build:
+      context: ./y-websocket-server
+      dockerfile: Dockerfile
+    container_name: collab-yjs-prod
+    ports:
+      - "1234:1234"
+    environment:
+      PORT: 1234
+      API_URL: http://api-service:8080
+    depends_on:
+      - api-service
+    restart: unless-stopped
+
+networks:
+  default:
+    name: collab-network-prod

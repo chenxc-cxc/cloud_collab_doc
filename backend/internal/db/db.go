@@ -207,6 +207,70 @@ func (db *DB) CreateDocument(ctx context.Context, title string, ownerID uuid.UUI
 	return &doc, nil
 }
 
+// CreateDocumentWithInitialContent creates a new document with initial welcome content
+// This is used for creating welcome documents for new users
+func (db *DB) CreateDocumentWithInitialContent(ctx context.Context, title string, ownerID uuid.UUID) (*models.Document, error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var doc models.Document
+	err = tx.QueryRow(ctx, `
+		INSERT INTO documents (title, owner_id)
+		VALUES ($1, $2)
+		RETURNING id, title, owner_id, created_at, updated_at
+	`, title, ownerID).Scan(&doc.ID, &doc.Title, &doc.OwnerID, &doc.CreatedAt, &doc.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create owner permission
+	_, err = tx.Exec(ctx, `
+		INSERT INTO document_permissions (doc_id, user_id, role)
+		VALUES ($1, $2, 'owner')
+	`, doc.ID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create initial Yjs snapshot with welcome content
+	// This is a pre-generated Yjs document state with welcome text
+	// The snapshot was created using Yjs and encodes the following content:
+	// "Welcome to CollabDocs! 🎉\n\nThis is your first document. Start typing to begin..."
+	welcomeSnapshot := getWelcomeDocumentSnapshot()
+
+	if len(welcomeSnapshot) > 0 {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO doc_snapshots (doc_id, version, snapshot)
+			VALUES ($1, 1, $2)
+		`, doc.ID, welcomeSnapshot)
+		if err != nil {
+			// Log error but don't fail - document is still created
+			// User will just see empty document instead of welcome content
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &doc, nil
+}
+
+// getWelcomeDocumentSnapshot returns a pre-generated Yjs document state
+// This creates a simple welcome message in the document
+// Content: "欢迎使用 CollabDocs! 🎉" + intro paragraph + "✨ 快速开始" + tips
+//
+// To regenerate this snapshot with different content:
+// 1. Edit scripts/generate-welcome-snapshot.js
+// 2. Run: cd scripts && node generate-welcome-snapshot.js
+// 3. Copy the output Go bytes here
+func getWelcomeDocumentSnapshot() []byte {
+	return []byte{1, 15, 165, 147, 158, 133, 6, 0, 7, 1, 7, 100, 101, 102, 97, 117, 108, 116, 3, 3, 100, 111, 99, 7, 0, 165, 147, 158, 133, 6, 0, 3, 7, 104, 101, 97, 100, 105, 110, 103, 7, 0, 165, 147, 158, 133, 6, 1, 6, 4, 0, 165, 147, 158, 133, 6, 2, 29, 230, 172, 162, 232, 191, 142, 228, 189, 191, 231, 148, 168, 32, 67, 111, 108, 108, 97, 98, 68, 111, 99, 115, 33, 32, 240, 159, 142, 137, 40, 0, 165, 147, 158, 133, 6, 1, 5, 108, 101, 118, 101, 108, 1, 125, 1, 135, 165, 147, 158, 133, 6, 1, 3, 9, 112, 97, 114, 97, 103, 114, 97, 112, 104, 7, 0, 165, 147, 158, 133, 6, 23, 6, 4, 0, 165, 147, 158, 133, 6, 24, 113, 232, 191, 153, 230, 152, 175, 228, 189, 160, 231, 154, 132, 231, 172, 172, 228, 184, 128, 228, 184, 170, 230, 150, 135, 230, 161, 163, 227, 128, 130, 67, 111, 108, 108, 97, 98, 68, 111, 99, 115, 32, 230, 152, 175, 228, 184, 128, 228, 184, 170, 229, 174, 158, 230, 151, 182, 229, 141, 143, 228, 189, 156, 230, 150, 135, 230, 161, 163, 229, 185, 179, 229, 143, 176, 239, 188, 140, 232, 174, 169, 229, 155, 162, 233, 152, 159, 229, 141, 143, 228, 189, 156, 229, 143, 152, 229, 190, 151, 231, 174, 128, 229, 141, 149, 233, 171, 152, 230, 149, 136, 227, 128, 130, 135, 165, 147, 158, 133, 6, 23, 3, 7, 104, 101, 97, 100, 105, 110, 103, 7, 0, 165, 147, 158, 133, 6, 70, 6, 4, 0, 165, 147, 158, 133, 6, 71, 16, 226, 156, 168, 32, 229, 191, 171, 233, 128, 159, 229, 188, 128, 229, 167, 139, 40, 0, 165, 147, 158, 133, 6, 70, 5, 108, 101, 118, 101, 108, 1, 125, 2, 135, 165, 147, 158, 133, 6, 70, 3, 9, 112, 97, 114, 97, 103, 114, 97, 112, 104, 7, 0, 165, 147, 158, 133, 6, 79, 6, 4, 0, 165, 147, 158, 133, 6, 80, 45, 228, 187, 165, 228, 184, 139, 230, 152, 175, 228, 184, 128, 228, 186, 155, 229, 184, 174, 229, 138, 169, 228, 189, 160, 228, 184, 138, 230, 137, 139, 231, 154, 132, 229, 176, 143, 230, 138, 128, 229, 183, 167, 239, 188, 154, 0}
+}
+
 // UpdateDocument updates a document
 func (db *DB) UpdateDocument(ctx context.Context, id uuid.UUID, title string) (*models.Document, error) {
 	var doc models.Document

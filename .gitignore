@@ -34,3 +34,14 @@ backend/tmp/
 
 # Y-Websocket server
 y-websocket-server/node_modules/
+
+# Scripts
+scripts/node_modules/
+scripts/package-lock.json
+scripts/welcome_snapshot_go.txt
+
+# Operation guides (keep README.md and DEPLOYMENT.md)
+scripts/*GUIDE*.md
+*GUIDE*.md
+!README.md
+DEPLOYMENT.md

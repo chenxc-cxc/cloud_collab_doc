@@ -151,6 +151,15 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	// Create welcome document for the new user
+	welcomeTitle := "👋 Welcome to CollabDocs, " + user.Name + "!"
+	_, err = h.db.CreateDocumentWithInitialContent(c.Request.Context(), welcomeTitle, user.ID)
+	if err != nil {
+		// Log error but don't fail registration
+		// The user can still use the app, just won't have the welcome doc
+		// In production, you might want to log this properly
+	}
+
 	// Generate token
 	token, err := auth.GenerateToken(user)
 	if err != nil {

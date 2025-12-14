@@ -1,15 +1,16 @@
 # =============================================================================
-# Docker Compose - 默认配置 (等同于 docker-compose.local.yml)
+# Docker Compose - 本地开发环境
 # =============================================================================
-# 推荐使用以下文件:
-#   - docker-compose.local.yml  → 本地开发环境
-#   - docker-compose.prod.yml   → 生产环境模拟
-#
-# 快速启动本地环境:
-#   docker-compose -f docker-compose.local.yml up -d
+# 使用方式:
+#   启动: docker-compose -f docker-compose.local.yml up -d
+#   停止: docker-compose -f docker-compose.local.yml down
+#   查看日志: docker-compose -f docker-compose.local.yml logs -f
 # =============================================================================
 
 services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 数据库
+  # ---------------------------------------------------------------------------
   postgres:
     image: postgres:15-alpine
     container_name: collab-postgres
@@ -28,6 +29,9 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------------------------------------------------------------------
+  # Redis 缓存/消息队列
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: collab-redis
@@ -41,6 +45,9 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------------------------------------------------------------------
+  # Go API 服务
+  # ---------------------------------------------------------------------------
   api-service:
     build:
       context: ./backend
@@ -53,13 +60,16 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: local-dev-secret-change-in-production
       PORT: 8080
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  # y-websocket server for Yjs real-time sync
+  # ---------------------------------------------------------------------------
+  # Y-WebSocket 实时协作服务
+  # ---------------------------------------------------------------------------
   y-websocket:
     build:
       context: ./y-websocket-server
