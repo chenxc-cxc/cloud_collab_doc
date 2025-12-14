@@ -75,42 +75,7 @@ The application is deployed on cloud infrastructure:
 
 
 
-## Tech Stack
-
-### Frontend
-- **Framework**: Next.js 14 (App Router)
-- **UI**: React 18 + TypeScript
-- **Editor**: TipTap 2.x
-- **Real-time**: Yjs + y-websocket
-- **State**: Zustand
-- **Styling**: TailwindCSS
-- **Icons**: Lucide React
-
-### Backend
-- **API Server**: Go + Gin Framework
-- **Authentication**: JWT (golang-jwt)
-- **Database**: PostgreSQL 15
-- **Real-time**: y-websocket server (Node.js)
-
-### Infrastructure
-- **Containerization**: Docker & Docker Compose
-- **Database Driver**: pgx/v5
-
-
-
-
-
-
-
-
-
 ## Getting Started
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Node.js 18+
-- Go 1.21+
 
 ### Full Docker Stack
 
@@ -243,8 +208,6 @@ For local development, these test users are pre-seeded (password: `password123`)
 
 
 
-
-
 ## API Reference
 
 ### Authentication
@@ -325,8 +288,6 @@ For local development, these test users are pre-seeded (password: `password123`)
 
 
 
-
-
 ## Environment Variables
 
 ### Frontend (.env.local)
@@ -352,6 +313,32 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 PORT=1234
 API_URL=http://localhost:8080
 ```
+
+
+
+## Tech Stack
+
+### Frontend
+
+- **Framework**: Next.js 14 (App Router)
+- **UI**: React 18 + TypeScript
+- **Editor**: TipTap 2.x
+- **Real-time**: Yjs + y-websocket
+- **State**: Zustand
+- **Styling**: TailwindCSS
+- **Icons**: Lucide React
+
+### Backend
+
+- **API Server**: Go + Gin Framework
+- **Authentication**: JWT (golang-jwt)
+- **Database**: PostgreSQL 15
+- **Real-time**: y-websocket server (Node.js)
+
+### Infrastructure
+
+- **Containerization**: Docker & Docker Compose
+- **Database Driver**: pgx/v5
 
 
 
