@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/base64"
+	"log"
 	"net/http"
 
 	"github.com/collab-docs/backend/internal/auth"
@@ -338,7 +339,9 @@ func (h *Handler) CreateDocument(c *gin.Context) {
 
 	doc, err := h.db.CreateDocument(c.Request.Context(), req.Title, user.ID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create document"})
+		// Log the actual error for debugging
+		log.Printf("ERROR CreateDocument: user=%s, title=%s, error=%v", user.ID, req.Title, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create document: " + err.Error()})
 		return
 	}
 
