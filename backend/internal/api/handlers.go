@@ -186,7 +186,7 @@ func (h *Handler) Login(c *gin.Context) {
 	user, err := h.db.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
 		log.Printf("[API] Login: database error: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
 		return
 	}
 
@@ -347,7 +347,7 @@ func (h *Handler) CreateDocument(c *gin.Context) {
 	if err != nil {
 		// Log the actual error for debugging
 		log.Printf("ERROR CreateDocument: user=%s, title=%s, error=%v", user.ID, req.Title, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create document: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create document"})
 		return
 	}
 

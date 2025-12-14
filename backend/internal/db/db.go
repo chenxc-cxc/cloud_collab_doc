@@ -25,7 +25,18 @@ func New(ctx context.Context) (*DB, error) {
 		dbURL = "postgres://postgres:postgres@localhost:5432/collab_docs?sslmode=disable"
 	}
 
-	pool, err := pgxpool.New(ctx, dbURL)
+	// Parse the connection string to configure pool
+	config, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+	}
+
+	// Disable prepared statement cache for Supabase PgBouncer compatibility
+	// PgBouncer in transaction mode doesn't support prepared statements
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	log.Printf("[DB] Connecting to database...")
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
@@ -34,6 +45,7 @@ func New(ctx context.Context) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	log.Printf("[DB] Database connection established")
 	return &DB{pool: pool}, nil
 }
 
