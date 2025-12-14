@@ -30,79 +30,6 @@ const welcomeContent = [
         type: 'paragraph',
         content: [{ type: 'text', text: '这是你的第一个文档。CollabDocs 是一个实时协作文档平台，让团队协作变得简单高效。' }]
     },
-    {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: '✨ 快速开始' }]
-    },
-    {
-        type: 'paragraph',
-        content: [{ type: 'text', text: '以下是一些帮助你上手的小技巧：' }]
-    },
-    {
-        type: 'bulletList',
-        content: [
-            {
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    content: [
-                        { type: 'text', marks: [{ type: 'bold' }], text: '实时协作' },
-                        { type: 'text', text: ' - 邀请团队成员一起编辑，所有更改实时同步' }
-                    ]
-                }]
-            },
-            {
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    content: [
-                        { type: 'text', marks: [{ type: 'bold' }], text: '评论功能' },
-                        { type: 'text', text: ' - 选中文本添加评论，进行讨论和反馈' }
-                    ]
-                }]
-            },
-            {
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    content: [
-                        { type: 'text', marks: [{ type: 'bold' }], text: '权限管理' },
-                        { type: 'text', text: ' - 精细控制谁可以查看、评论或编辑文档' }
-                    ]
-                }]
-            },
-            {
-                type: 'listItem',
-                content: [{
-                    type: 'paragraph',
-                    content: [
-                        { type: 'text', marks: [{ type: 'bold' }], text: '版本历史' },
-                        { type: 'text', text: ' - 自动保存，随时查看历史版本' }
-                    ]
-                }]
-            }
-        ]
-    },
-    {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: '📝 试试看' }]
-    },
-    {
-        type: 'paragraph',
-        content: [{ type: 'text', text: '直接开始编辑这个文档，或者点击左侧边栏的「新建文档」创建一个全新的文档。' }]
-    },
-    {
-        type: 'paragraph',
-        content: [{ type: 'text', text: '' }]
-    },
-    {
-        type: 'paragraph',
-        content: [
-            { type: 'text', text: '祝你使用愉快！如有问题，请随时联系我们。' }
-        ]
-    }
 ];
 
 // ============================================================================
@@ -179,19 +106,19 @@ console.log('Bytes length:', state.length);
 console.log('');
 
 // Go 格式
-console.log('📋 Go byte slice (复制到 getWelcomeDocumentSnapshot 函数):');
+console.log('Go byte slice (复制到 getWelcomeDocumentSnapshot 函数):');
 console.log('----------------------------------------');
 console.log('return []byte{' + Array.from(state).join(', ') + '}');
 console.log('----------------------------------------\n');
 
 // Base64 格式 (备用)
-console.log('📋 Base64 (备用格式):');
+console.log('Base64 (备用格式):');
 console.log('----------------------------------------');
 console.log(Buffer.from(state).toString('base64'));
 console.log('----------------------------------------\n');
 
 // 验证信息
-console.log('✅ 生成完成！');
+console.log('生成完成！');
 console.log('');
 console.log('下一步:');
 console.log('1. 复制上面的 Go byte slice');

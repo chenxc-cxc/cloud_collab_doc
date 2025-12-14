@@ -24,19 +24,13 @@ The application is deployed on cloud infrastructure:
 
 ## Demo
 
-??待添加
+![homepage](./assets/homepage.jpg)
 
+![collab_demo](./assets/collab_demo.jpg)
 
+![comment_demo](./assets/comment_test.jpg)
 
-## Documentation
-
-- **[System Architecture](./ARCHITECTURE.md)** - 系统架构、工作流程、功能模块设计等详细说明
-
-
-
-## Features
-
-
+![sharing_demo](./assets/sharing_demo.jpg)
 
 
 ## Features

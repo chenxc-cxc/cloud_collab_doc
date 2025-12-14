@@ -45,8 +45,10 @@ scripts/node_modules/
 scripts/package-lock.json
 scripts/welcome_snapshot_go.txt
 
-# Operation guides (keep README.md and DEPLOYMENT.md)
+# My doc
 scripts/*GUIDE*.md
 *GUIDE*.md
 !README.md
 DEPLOYMENT.md
+ARCHITECTURE.md
+PROJECT_REPORT.md
